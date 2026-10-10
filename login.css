@@ -1,0 +1,34 @@
+/* QueryHub | Login e política de privacidade (usa os tokens de tema de style.css) */
+.login {
+  min-height: calc(100vh - 5px); min-height: calc(100dvh - 5px);
+  display: grid; place-items: center; padding: 24px 16px;
+  background: var(--surface-2);
+}
+.login__theme { position: fixed; top: 16px; right: 16px; }
+
+.login__card {
+  width: min(420px, 100%); padding: 32px 28px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+  box-shadow: var(--shadow); animation: modal-in 0.35s var(--ease) both;
+}
+.login__brand { margin-bottom: 26px; }
+.login__title { font-size: 24px; letter-spacing: -0.03em; margin-bottom: 8px; }
+.login__text { font-size: 13px; line-height: 1.55; color: var(--muted); margin-bottom: 22px; }
+.login__button { min-height: 44px; display: flex; justify-content: flex-start; }
+.login__error { min-height: 20px; margin-top: 14px; font-size: 12px; line-height: 1.5; color: var(--danger-text); }
+.login__legal { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.login__legal a, .legal a { color: var(--accent-text); font-weight: 600; text-decoration: none; }
+.login__legal a:hover, .legal a:hover { text-decoration: underline; }
+
+.legal { max-width: 720px; margin: 0 auto; padding: 36px 24px 70px; }
+.legal__title { margin: 28px 0 6px; font-size: 28px; letter-spacing: -0.03em; }
+.legal__updated { margin-bottom: 26px; font-size: 12px; color: var(--muted); }
+.legal h2 { margin: 24px 0 8px; font-size: 16px; }
+.legal p { margin-bottom: 10px; font-size: 14px; line-height: 1.65; color: var(--text-2); }
+.legal__back { margin-top: 28px; }
+
+@media (max-width: 480px) {
+  .login__card { padding: 24px 18px; }
+  .legal { padding: 24px 16px 56px; }
+  .legal__title { font-size: 24px; }
+}

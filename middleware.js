@@ -17,6 +17,7 @@ const PUBLIC_PATHS = [
   '/css/style.css',
   '/css/login.css',
   '/js/login.js',
+  '/js/theme.js',
   '/robots.txt',
   '/api/login',
   '/api/config',
