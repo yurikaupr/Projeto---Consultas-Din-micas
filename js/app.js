@@ -485,7 +485,9 @@
     github_write: 'O GitHub recusou a gravação do arquivo.',
     github_read: 'Não foi possível ler o repositório no GitHub.',
     github_conflict: 'O arquivo mudou durante a publicação. Tente novamente.',
-    invalid_library: 'A biblioteca enviada é inválida ou está vazia.',
+    invalid_library: 'A biblioteca enviada é inválida.',
+    empty_not_confirmed: 'A publicação de uma biblioteca vazia precisa de confirmação.',
+    bad_origin: 'Requisição recusada por segurança. Recarregue a página e tente de novo.',
     forbidden: 'Seu usuário não é administrador.'
   };
 
@@ -497,9 +499,13 @@
   function publish() {
     if (state.publishing) return;
     if (!state.dirty) { toast('Não há alterações para publicar.'); return; }
-    if (!state.queries.length) { toast('A biblioteca está vazia. Cadastre consultas antes de publicar.'); return; }
     if (!window.CompressionStream) { toast('Seu navegador é antigo para publicar. Atualize o Chrome, Edge ou Safari.'); return; }
-    if (!window.confirm('Publicar ' + state.queries.length + ' consulta(s) para o time? O site atualiza em cerca de 1 minuto.')) return;
+
+    var empty = state.queries.length === 0;
+    var question = empty
+      ? 'ATENÇÃO: a biblioteca está VAZIA. Publicar vai apagar TODAS as consultas do site do time. Deseja continuar?'
+      : 'Publicar ' + state.queries.length + ' consulta(s) para o time? O site atualiza em cerca de 1 minuto.';
+    if (!window.confirm(question)) return;
 
     state.publishing = true;
     renderPublish();
@@ -507,11 +513,9 @@
     var finish = function () { state.publishing = false; renderPublish(); };
 
     gzip(JSON.stringify(state.queries)).then(function (blob) {
-      return fetch('/api/admin/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: blob
-      });
+      var headers = { 'Content-Type': 'application/octet-stream' };
+      if (empty) headers['X-Confirm-Empty'] = 'yes';
+      return fetch('/api/admin/publish', { method: 'POST', headers: headers, body: blob });
     }).then(function (res) {
       if (res.status === 401) { window.location.replace('/login.html'); return null; }
       if (res.status === 404) throw new Error('A publicação só funciona no site publicado na Vercel.');

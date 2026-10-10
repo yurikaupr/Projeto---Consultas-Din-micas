@@ -1,8 +1,13 @@
 // Utilitários de sessão compartilhados pelas rotas /api (arquivos com "_" não viram rotas)
 import { SignJWT, jwtVerify } from 'jose';
 
-export const COOKIE_NAME = 'qh_session';
-export const SESSION_HOURS = 8;
+// O prefixo __Host- obriga o navegador a só aceitar o cookie via HTTPS, sem Domain e com Path=/
+export const COOKIE_NAME = '__Host-qh_session';
+
+function sessionHours() {
+  const hours = Number(process.env.SESSION_HOURS) || 8;
+  return Math.min(Math.max(hours, 1), 24);
+}
 
 function secretKey() {
   const secret = process.env.SESSION_SECRET;
@@ -19,11 +24,27 @@ export function listFromEnv(name) {
   return (process.env[name] || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
+// Registro simples nos logs da Vercel (não grava tokens nem conteúdo das consultas)
+export function audit(event, data) {
+  console.log(JSON.stringify(Object.assign({ ts: new Date().toISOString(), event: event }, data || {})));
+}
+
+// Defesa extra contra CSRF: a requisição precisa vir do próprio site
+export function sameOrigin(req) {
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const origin = req.headers.origin;
+  if (origin) {
+    try { return new URL(origin).host === host; } catch (err) { return false; }
+  }
+  const site = req.headers['sec-fetch-site'];
+  return !site || site === 'same-origin' || site === 'none';
+}
+
 export async function createSession(user) {
   return new SignJWT({ email: user.email, name: user.name || '', role: user.role || 'viewer' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime(SESSION_HOURS + 'h')
+    .setExpirationTime(sessionHours() + 'h')
     .sign(secretKey());
 }
 
@@ -45,13 +66,16 @@ export async function readSession(req) {
 export async function requireAdmin(req, res) {
   const session = await readSession(req);
   if (!session) { res.status(401).json({ error: 'unauthorized' }); return null; }
-  const isAdmin = session.role === 'admin' && listFromEnv('ADMIN_EMAILS').includes(String(session.email).toLowerCase());
+  const email = String(session.email).toLowerCase();
+  const isAdmin = session.role === 'admin' &&
+    listFromEnv('ADMIN_EMAILS').includes(email) &&
+    !listFromEnv('BLOCKED_EMAILS').includes(email);
   if (!isAdmin) { res.status(403).json({ error: 'forbidden' }); return null; }
   return session;
 }
 
 export function sessionCookie(token) {
-  return COOKIE_NAME + '=' + token + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + SESSION_HOURS * 3600;
+  return COOKIE_NAME + '=' + token + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + sessionHours() * 3600;
 }
 
 export function clearCookie() {

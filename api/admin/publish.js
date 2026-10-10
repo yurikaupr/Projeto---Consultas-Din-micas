@@ -1,7 +1,7 @@
 // Recebe a biblioteca (JSON compactado com gzip) e grava em data/queries.json no GitHub.
 // A Vercel faz o deploy automaticamente a cada commit.
 import zlib from 'node:zlib';
-import { requireAdmin } from '../_session.js';
+import { audit, requireAdmin, sameOrigin } from '../_session.js';
 
 const GITHUB_API = 'https://api.github.com';
 const FILE_PATH = 'data/queries.json';
@@ -57,6 +57,8 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
+  if (!sameOrigin(req)) return res.status(403).json({ error: 'bad_origin' });
+
   const session = await requireAdmin(req, res);
   if (!session) return;
 
@@ -76,8 +78,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'invalid_body' });
   }
 
-  if (!Array.isArray(list) || !list.length || list.length > MAX_QUERIES) {
+  if (!Array.isArray(list) || list.length > MAX_QUERIES) {
     return res.status(400).json({ error: 'invalid_library' });
+  }
+  // Biblioteca vazia é permitida, mas só com confirmação explícita (evita apagar tudo por acidente)
+  if (!list.length && req.headers['x-confirm-empty'] !== 'yes') {
+    return res.status(400).json({ error: 'empty_not_confirmed' });
   }
   const valid = list.every((q) => q && q.id && q.name && q.raw_json && typeof q.raw_json === 'object');
   if (!valid) return res.status(400).json({ error: 'invalid_library' });
@@ -95,9 +101,11 @@ export default async function handler(req, res) {
       const put = await github('/repos/' + repo + '/contents/' + FILE_PATH, { method: 'PUT', body: JSON.stringify(body) });
       if (put.ok) {
         const data = await put.json();
+        audit('publish_ok', { email: session.email, count: list.length, commit: data.commit && data.commit.sha });
         return res.status(200).json({ ok: true, count: list.length, commit: data.commit && data.commit.sha });
       }
       if (put.status !== 409 && put.status !== 422) {
+        audit('publish_failed', { email: session.email, status: put.status });
         return res.status(502).json({ error: put.status === 401 || put.status === 403 ? 'github_auth' : 'github_write', status: put.status });
       }
     }

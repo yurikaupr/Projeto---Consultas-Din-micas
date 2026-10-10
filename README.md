@@ -30,7 +30,10 @@ vercel.json                 Cabeçalhos de segurança
 | `GITHUB_TOKEN` | token do GitHub (veja abaixo) |
 | `GITHUB_REPO` | `usuario/nome-do-repositorio` |
 | `GITHUB_BRANCH` | `main` (opcional) |
-| `EXTRA_ALLOWED_EMAILS` | e-mails extras só para consulta (opcional) |
+| `SESSION_HOURS` | duração do login em horas, de 1 a 24 (padrão 8) |
+| `ALLOWED_EMAILS` | opcional: se preenchida, só estes e-mails (e os admins) entram, em vez do domínio inteiro |
+| `BLOCKED_EMAILS` | opcional: e-mails bloqueados na hora, mesmo com login aberto |
+| `EXTRA_ALLOWED_EMAILS` | opcional: e-mails extras só para consulta |
 
 Depois de criar ou alterar variáveis, faça **Redeploy**.
 
@@ -51,3 +54,22 @@ Depois de criar ou alterar variáveis, faça **Redeploy**.
 - Cada publicação gera um deploy. O plano gratuito da Vercel limita a quantidade de deploys por dia, então faça várias alterações e publique uma vez.
 - As alterações ficam em rascunho no navegador do admin até a publicação. "Descartar rascunho" recarrega o que está publicado.
 - As favoritas de cada pessoa ficam só no navegador dela.
+
+## Segurança (resumo)
+- Todo arquivo e rota exige sessão, exceto a tela de login, a política de privacidade e o CSS do login. O que é sensível (`data/queries.json`, `js/app.js`, `admin.html`, `/api/admin/*`) só é entregue com sessão válida.
+- O domínio é validado no servidor (assinatura do token do Google, público-alvo, `email_verified` e campo `hd`). Nada depende do navegador.
+- O painel admin e a publicação exigem o e-mail em `ADMIN_EMAILS`, conferido a cada requisição.
+- Cookie `__Host-` com HttpOnly, Secure e SameSite=Lax. Rotas de escrita também conferem a origem da requisição.
+- Cabeçalhos: CSP restritiva, HSTS, X-Frame-Options, nosniff, sem referrer. A biblioteca JSZip é servida pelo próprio projeto.
+- Nenhum segredo está no código do navegador. Os segredos ficam nas variáveis de ambiente da Vercel.
+- Logins, bloqueios e publicações são registrados nos logs da Vercel (sem tokens e sem o conteúdo das consultas).
+
+### Revogar acesso
+- Uma pessoa: coloque o e-mail em `BLOCKED_EMAILS` e faça Redeploy. O bloqueio vale na hora, mesmo com sessão aberta.
+- Todo mundo: troque o `SESSION_SECRET` e faça Redeploy. Todas as sessões deixam de valer.
+
+### Boas práticas
+- Ative a verificação em duas etapas no GitHub e na Vercel.
+- Mantenha o repositório privado e com poucos colaboradores.
+- Use token do GitHub com validade curta, só no repositório do QueryHub, com permissão apenas em Contents.
+- Nunca envie `.env` ou tokens para o repositório.

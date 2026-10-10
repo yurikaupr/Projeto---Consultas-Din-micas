@@ -8,6 +8,8 @@ export const config = {
   matcher: '/((?!_vercel).*)'
 };
 
+const COOKIE_NAME = '__Host-qh_session';
+
 // Rotas que precisam ser públicas para o login funcionar
 const PUBLIC_PATHS = [
   '/login.html',
@@ -27,6 +29,10 @@ function readCookie(request, name) {
   return part ? part.slice(name.length + 1) : '';
 }
 
+function listFromEnv(name) {
+  return (process.env[name] || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
 function isAdminPath(pathname) {
   return pathname === '/admin.html' || pathname === '/admin' || pathname.startsWith('/api/admin/');
 }
@@ -43,6 +49,16 @@ function redirect(location) {
   return new Response(null, { status: 302, headers: { Location: location, 'Cache-Control': 'no-store' } });
 }
 
+// Regras conferidas a cada requisição, para que mudanças nas variáveis valham na hora
+function isStillAllowed(email) {
+  if (listFromEnv('BLOCKED_EMAILS').includes(email)) return false;
+  const allowList = listFromEnv('ALLOWED_EMAILS');
+  if (!allowList.length) return true;
+  return allowList.includes(email) ||
+    listFromEnv('ADMIN_EMAILS').includes(email) ||
+    listFromEnv('EXTRA_ALLOWED_EMAILS').includes(email);
+}
+
 export default async function middleware(request) {
   const { pathname } = new URL(request.url);
   if (PUBLIC_PATHS.includes(pathname)) return next();
@@ -54,7 +70,7 @@ export default async function middleware(request) {
   }
 
   const wantsPage = (request.headers.get('accept') || '').includes('text/html');
-  const token = readCookie(request, 'qh_session');
+  const token = readCookie(request, COOKIE_NAME);
 
   if (token) {
     let session = null;
@@ -66,7 +82,16 @@ export default async function middleware(request) {
     }
 
     if (session) {
-      if (isAdminPath(pathname) && session.role !== 'admin') {
+      const email = String(session.email || '').toLowerCase();
+
+      if (!isStillAllowed(email)) {
+        return wantsPage
+          ? new Response('Acesso revogado.', { status: 403, headers: { 'Cache-Control': 'no-store' } })
+          : json(403, { error: 'revoked' });
+      }
+
+      const isAdmin = session.role === 'admin' && listFromEnv('ADMIN_EMAILS').includes(email);
+      if (isAdminPath(pathname) && !isAdmin) {
         return pathname.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
       }
       return next();
