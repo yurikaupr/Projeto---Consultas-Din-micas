@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Painel admin | QueryHub</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-mode="admin">
+
+  <div class="brand-strip"></div>
+
+  <!-- ========== Header ========== -->
+  <header class="header">
+    <div class="container header__inner">
+      <div class="brand">
+        <span class="brand__symbol"><i></i><i></i><i></i><i></i></span>
+        <div>
+          <strong class="brand__name">QueryHub <span class="role-tag">Admin</span></strong>
+          <small class="brand__sub">Painel de administração</small>
+        </div>
+      </div>
+
+      <div class="header__actions">
+        <span class="user hidden" id="userBox">
+          <span class="user__email" id="userEmail"></span>
+          <button type="button" class="link-btn" id="btnLogout">Sair</button>
+        </span>
+        <a class="btn" href="index.html">Ver como time</a>
+        <button type="button" class="btn" id="btnDiscard" title="Descarta o rascunho e recarrega a biblioteca publicada">Descartar rascunho</button>
+        <button type="button" class="btn" id="btnImport">+ Cadastrar</button>
+        <button type="button" class="btn btn--primary" id="btnPublish">Publicar</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section class="hero">
+      <h1 class="hero__title">Painel de administração</h1>
+      <p class="hero__text">
+        Cadastre, edite e organize as consultas. As mudanças ficam em rascunho neste navegador até você clicar em <strong>Publicar</strong>.
+      </p>
+      <p class="publish-hint" id="publishHint"></p>
+    </section>
+
+<section class="toolbar">
+      <label class="search">
+        <svg class="search__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input type="search" id="searchInput" class="search__input" placeholder="Buscar por nome, descrição ou coluna  ( / )" autocomplete="off">
+      </label>
+
+      <select id="sortSelect" class="select" aria-label="Ordenar consultas">
+        <option value="name">Nome (A–Z)</option>
+        <option value="recent">Mais recentes</option>
+      </select>
+    </section>
+
+    <div class="chips" id="categoryChips" role="group" aria-label="Filtrar por categoria"></div>
+
+    <div class="results-head">
+      <label class="results-head__select">
+        <input type="checkbox" id="selectAll">
+        <strong>Biblioteca de consultas</strong>
+        <span id="resultCount">0 consultas</span>
+      </label>
+      <button type="button" class="link-btn" id="btnZipList">Baixar lista em ZIP</button>
+    </div>
+
+    <section class="query-list" id="queryList"></section>
+
+    <div class="empty hidden" id="emptyState">
+      <p class="empty__title" id="emptyTitle"></p>
+      <p class="empty__text" id="emptyText"></p>
+    </div>
+  </main>
+
+  <!-- ========== Barra de ações em lote ========== -->
+  <div class="bulk hidden" id="bulkBar">
+    <strong id="bulkCount">0 selecionadas</strong>
+    <div class="bulk__actions">
+      <button type="button" class="btn btn--sm" id="bulkCategories">Definir categorias</button>
+      <button type="button" class="btn btn--sm" id="bulkZip">Baixar ZIP</button>
+      <button type="button" class="btn btn--sm btn--danger" id="bulkDelete">Excluir</button>
+      <button type="button" class="btn btn--sm" id="bulkClear">Limpar seleção</button>
+    </div>
+  </div>
+
+<!-- ========== Drawer de detalhes ========== -->
+  <div class="overlay hidden" id="drawerOverlay"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+    <div class="drawer__head">
+      <div class="drawer__headline">
+        <div>
+          <div class="badges" id="drawerBadges"></div>
+          <h2 class="drawer__title" id="drawerTitle"></h2>
+        </div>
+        <button type="button" class="icon-btn" id="drawerClose" aria-label="Fechar">×</button>
+      </div>
+      <p class="drawer__desc" id="drawerDesc"></p>
+      <div class="drawer__actions">
+        <button type="button" class="btn btn--primary" id="drawerDownload">Baixar JSON</button>
+        <button type="button" class="btn" id="drawerFav">☆ Favoritar</button>
+        <button type="button" class="btn" id="drawerEdit">Editar</button>
+</div>
+    </div>
+
+    <div class="drawer__body">
+      <section class="block">
+        <h3 class="block__title">Filtros necessários</h3>
+        <div id="drawerFilters"></div>
+      </section>
+
+      <section class="block">
+        <div class="block__head">
+          <h3 class="block__title" id="drawerColsTitle">Colunas</h3>
+          <div class="block__tools">
+            <input type="search" id="colSearch" class="mini-input" placeholder="Filtrar colunas">
+            <button type="button" class="link-btn" id="copyCols">Copiar nomes</button>
+          </div>
+        </div>
+        <div class="col-grid" id="drawerCols"></div>
+      </section>
+    </div>
+  </aside>
+
+
+  <!-- ========== Modal: cadastrar ========== -->
+  <dialog class="modal" id="importModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Cadastrar consultas</h2>
+        <p class="modal__sub">Cadastre uma consulta com todos os detalhes ou envie várias de uma vez.</p>
+      </div>
+      <button type="button" class="icon-btn" data-close="importModal" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tabs__btn is-active" data-tab="single" role="tab">Uma consulta</button>
+      <button type="button" class="tabs__btn" data-tab="batch" role="tab">Várias (JSON ou ZIP)</button>
+    </div>
+
+    <div class="tabs__panel" data-panel="single">
+      <label class="dropzone dropzone--sm" id="singleDrop">
+        <input type="file" id="singleFile" accept=".json,application/json">
+        <strong>Selecionar o arquivo JSON da consulta</strong>
+        <span>Depois você informa nome, categorias, descrição e colunas em destaque.</span>
+      </label>
+
+      <p class="or">ou cole o conteúdo do JSON</p>
+
+      <div class="field">
+        <textarea id="pasteJson" class="mono" placeholder='{"name": "...", "query": "...", "field": [ ... ]}'></textarea>
+      </div>
+      <button type="button" class="btn btn--primary" id="btnPaste">Continuar</button>
+    </div>
+
+    <div class="tabs__panel hidden" data-panel="batch">
+      <label class="dropzone" id="batchDrop">
+        <input type="file" id="batchFile" accept=".json,.zip,application/json,application/zip" multiple>
+        <strong>Clique para selecionar ou arraste os arquivos aqui</strong>
+        <span>Aceita vários .json ou um .zip com todas as consultas.</span>
+      </label>
+      <p class="modal__note">
+        No lote, a categoria é sugerida pelo nome da consulta. Depois, use a seleção na lista para ajustar várias de uma vez.
+      </p>
+    </div>
+
+    <p class="modal__status" id="importStatus"></p>
+
+    <div class="modal__foot">
+      <span></span>
+      <button type="button" class="btn" data-close="importModal">Fechar</button>
+    </div>
+  </dialog>
+
+  <!-- ========== Modal: editar consulta ========== -->
+  <dialog class="modal modal--wide" id="editModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title" id="editTitle">Editar consulta</h2>
+        <p class="modal__sub" id="editSummary"></p>
+      </div>
+      <button type="button" class="icon-btn" data-close="editModal" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="form">
+      <div class="field">
+        <label for="editName">Nome da consulta</label>
+        <input type="text" id="editName" maxlength="160">
+      </div>
+
+      <div class="field">
+        <label>Categorias <span class="field__hint" id="catCount">0 de 3</span></label>
+        <div class="cat-picker" id="catPicker"></div>
+      </div>
+
+      <div class="field">
+        <label for="editDesc">Descrição para o time</label>
+        <textarea id="editDesc" placeholder="Explique de forma objetiva o que a consulta entrega."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Colunas <span class="field__hint" id="colCount">0 de 4 em destaque</span></label>
+        <p class="field__help">Marque até 4 para aparecerem no card. O nome ao lado pode ser ajustado para ficar claro ao time.</p>
+        <div class="col-picker" id="colPicker"></div>
+      </div>
+    </div>
+
+    <div class="modal__foot">
+      <button type="button" class="btn btn--danger" id="editDelete">Excluir</button>
+      <div class="modal__foot-actions">
+        <button type="button" class="btn" data-close="editModal">Cancelar</button>
+        <button type="button" class="btn btn--primary" id="editSave">Salvar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ========== Modal: categorias em lote ========== -->
+  <dialog class="modal modal--sm" id="bulkModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Definir categorias</h2>
+        <p class="modal__sub" id="bulkModalSub"></p>
+      </div>
+      <button type="button" class="icon-btn" data-close="bulkModal" aria-label="Fechar">×</button>
+    </div>
+    <div class="cat-picker" id="bulkPicker"></div>
+    <p class="field__hint bulk-hint" id="bulkPickerCount">0 de 3</p>
+    <div class="modal__foot">
+      <span></span>
+      <div class="modal__foot-actions">
+        <button type="button" class="btn" data-close="bulkModal">Cancelar</button>
+        <button type="button" class="btn btn--primary" id="bulkApply">Aplicar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

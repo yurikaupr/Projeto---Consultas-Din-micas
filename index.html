@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body data-mode="viewer">
 
   <div class="brand-strip"></div>
 
@@ -31,16 +31,13 @@
           <span class="user__email" id="userEmail"></span>
           <button type="button" class="link-btn" id="btnLogout">Sair</button>
         </span>
-        <button type="button" class="btn" id="btnSync" title="Carrega a biblioteca publicada em data/queries.json">Sincronizar</button>
-        <button type="button" class="btn" id="btnExport">Exportar</button>
-        <button type="button" class="btn btn--primary" id="btnImport">+ Cadastrar consultas</button>
+        <a class="btn btn--primary hidden" id="adminLink" href="admin.html">Painel admin</a>
       </div>
     </div>
   </header>
 
   <main class="container">
 
-    <!-- ========== Hero ========== -->
     <section class="hero">
       <h1 class="hero__title">Consultas do time de Sucesso</h1>
       <p class="hero__text">
@@ -48,8 +45,7 @@
       </p>
     </section>
 
-    <!-- ========== Busca e ordenação ========== -->
-    <section class="toolbar">
+<section class="toolbar">
       <label class="search">
         <svg class="search__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -83,18 +79,16 @@
     </div>
   </main>
 
-  <!-- ========== Barra de ações em lote ========== -->
+  <!-- ========== Barra de seleção ========== -->
   <div class="bulk hidden" id="bulkBar">
     <strong id="bulkCount">0 selecionadas</strong>
     <div class="bulk__actions">
-      <button type="button" class="btn btn--sm" id="bulkCategories">Definir categorias</button>
       <button type="button" class="btn btn--sm" id="bulkZip">Baixar ZIP</button>
-      <button type="button" class="btn btn--sm btn--danger" id="bulkDelete">Excluir</button>
       <button type="button" class="btn btn--sm" id="bulkClear">Limpar seleção</button>
     </div>
   </div>
 
-  <!-- ========== Drawer de detalhes ========== -->
+<!-- ========== Drawer de detalhes ========== -->
   <div class="overlay hidden" id="drawerOverlay"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
     <div class="drawer__head">
@@ -109,8 +103,7 @@
       <div class="drawer__actions">
         <button type="button" class="btn btn--primary" id="drawerDownload">Baixar JSON</button>
         <button type="button" class="btn" id="drawerFav">☆ Favoritar</button>
-        <button type="button" class="btn" id="drawerEdit">Editar</button>
-      </div>
+</div>
     </div>
 
     <div class="drawer__body">
@@ -131,167 +124,6 @@
       </section>
     </div>
   </aside>
-
-  <!-- ========== Modal: cadastrar ========== -->
-  <dialog class="modal" id="importModal">
-    <div class="modal__head">
-      <div>
-        <h2 class="modal__title">Cadastrar consultas</h2>
-        <p class="modal__sub">Cadastre uma consulta com todos os detalhes ou envie várias de uma vez.</p>
-      </div>
-      <button type="button" class="icon-btn" data-close="importModal" aria-label="Fechar">×</button>
-    </div>
-
-    <div class="tabs" role="tablist">
-      <button type="button" class="tabs__btn is-active" data-tab="single" role="tab">Uma consulta</button>
-      <button type="button" class="tabs__btn" data-tab="batch" role="tab">Várias (JSON ou ZIP)</button>
-    </div>
-
-    <!-- Individual -->
-    <div class="tabs__panel" data-panel="single">
-      <label class="dropzone dropzone--sm" id="singleDrop">
-        <input type="file" id="singleFile" accept=".json,application/json">
-        <strong>Selecionar o arquivo JSON da consulta</strong>
-        <span>Depois você informa nome, categorias, descrição e colunas em destaque.</span>
-      </label>
-
-      <p class="or">ou cole o conteúdo do JSON</p>
-
-      <div class="field">
-        <textarea id="pasteJson" class="mono" placeholder='{"name": "...", "query": "...", "field": [ ... ]}'></textarea>
-      </div>
-      <button type="button" class="btn btn--primary" id="btnPaste">Continuar</button>
-    </div>
-
-    <!-- Lote -->
-    <div class="tabs__panel hidden" data-panel="batch">
-      <label class="dropzone" id="batchDrop">
-        <input type="file" id="batchFile" accept=".json,.zip,application/json,application/zip" multiple>
-        <strong>Clique para selecionar ou arraste os arquivos aqui</strong>
-        <span>Aceita vários .json, um .zip ou uma biblioteca exportada do QueryHub (inclusive protegida por senha).</span>
-      </label>
-      <p class="modal__note">
-        No lote, a categoria é sugerida pelo nome da consulta. Depois, use a seleção na lista para ajustar várias de uma vez.
-      </p>
-    </div>
-
-    <p class="modal__status" id="importStatus"></p>
-
-    <div class="modal__foot">
-      <span></span>
-      <button type="button" class="btn" data-close="importModal">Fechar</button>
-    </div>
-  </dialog>
-
-  <!-- ========== Modal: editar consulta ========== -->
-  <dialog class="modal modal--wide" id="editModal">
-    <div class="modal__head">
-      <div>
-        <h2 class="modal__title" id="editTitle">Editar consulta</h2>
-        <p class="modal__sub" id="editSummary"></p>
-      </div>
-      <button type="button" class="icon-btn" data-close="editModal" aria-label="Fechar">×</button>
-    </div>
-
-    <div class="form">
-      <div class="field">
-        <label for="editName">Nome da consulta</label>
-        <input type="text" id="editName" maxlength="160">
-      </div>
-
-      <div class="field">
-        <label>Categorias <span class="field__hint" id="catCount">0 de 3</span></label>
-        <div class="cat-picker" id="catPicker"></div>
-      </div>
-
-      <div class="field">
-        <label for="editDesc">Descrição para o time</label>
-        <textarea id="editDesc" placeholder="Explique de forma objetiva o que a consulta entrega."></textarea>
-      </div>
-
-      <div class="field">
-        <label>Colunas <span class="field__hint" id="colCount">0 de 4 em destaque</span></label>
-        <p class="field__help">Marque até 4 para aparecerem no card. O nome ao lado pode ser ajustado para ficar claro ao time.</p>
-        <div class="col-picker" id="colPicker"></div>
-      </div>
-    </div>
-
-    <div class="modal__foot">
-      <button type="button" class="btn btn--danger" id="editDelete">Excluir</button>
-      <div class="modal__foot-actions">
-        <button type="button" class="btn" data-close="editModal">Cancelar</button>
-        <button type="button" class="btn btn--primary" id="editSave">Salvar</button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ========== Modal: categorias em lote ========== -->
-  <dialog class="modal modal--sm" id="bulkModal">
-    <div class="modal__head">
-      <div>
-        <h2 class="modal__title">Definir categorias</h2>
-        <p class="modal__sub" id="bulkModalSub"></p>
-      </div>
-      <button type="button" class="icon-btn" data-close="bulkModal" aria-label="Fechar">×</button>
-    </div>
-    <div class="cat-picker" id="bulkPicker"></div>
-    <p class="field__hint bulk-hint" id="bulkPickerCount">0 de 3</p>
-    <div class="modal__foot">
-      <span></span>
-      <div class="modal__foot-actions">
-        <button type="button" class="btn" data-close="bulkModal">Cancelar</button>
-        <button type="button" class="btn btn--primary" id="bulkApply">Aplicar</button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ========== Modal: exportar ========== -->
-  <dialog class="modal modal--sm" id="exportModal">
-    <div class="modal__head">
-      <div>
-        <h2 class="modal__title">Exportar biblioteca</h2>
-        <p class="modal__sub">Gera o arquivo queries.json para publicar em data/ e compartilhar com o time.</p>
-      </div>
-      <button type="button" class="icon-btn" data-close="exportModal" aria-label="Fechar">×</button>
-    </div>
-    <div class="field">
-      <label for="exportPass">Senha de proteção (recomendado)</label>
-      <input type="password" id="exportPass" autocomplete="new-password" placeholder="Use uma frase longa">
-    </div>
-    <p class="modal__note">
-      Com senha, o arquivo é criptografado (AES-256) e as consultas, tabelas e colunas não ficam legíveis
-      mesmo que alguém acesse o link. O time digita a senha ao abrir o site pela primeira vez.
-    </p>
-    <div class="modal__foot">
-      <span></span>
-      <div class="modal__foot-actions">
-        <button type="button" class="btn" data-close="exportModal">Cancelar</button>
-        <button type="button" class="btn btn--primary" id="exportConfirm">Exportar</button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ========== Modal: desbloquear biblioteca ========== -->
-  <dialog class="modal modal--sm" id="unlockModal">
-    <div class="modal__head">
-      <div>
-        <h2 class="modal__title">Biblioteca protegida</h2>
-        <p class="modal__sub">Digite a senha informada pelo time para liberar as consultas.</p>
-      </div>
-    </div>
-    <div class="field">
-      <label for="unlockPass">Senha</label>
-      <input type="password" id="unlockPass" autocomplete="current-password">
-    </div>
-    <p class="modal__error" id="unlockError"></p>
-    <div class="modal__foot">
-      <span></span>
-      <div class="modal__foot-actions">
-        <button type="button" class="btn" id="unlockCancel">Cancelar</button>
-        <button type="button" class="btn btn--primary" id="unlockConfirm">Desbloquear</button>
-      </div>
-    </div>
-  </dialog>
 
   <div class="toast" id="toast" role="status"></div>
 

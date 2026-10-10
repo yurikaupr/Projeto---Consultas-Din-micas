@@ -14,8 +14,13 @@ export function isConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && secretKey());
 }
 
+// Lê uma variável com e-mails separados por vírgula
+export function listFromEnv(name) {
+  return (process.env[name] || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
 export async function createSession(user) {
-  return new SignJWT({ email: user.email, name: user.name || '' })
+  return new SignJWT({ email: user.email, name: user.name || '', role: user.role || 'viewer' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(SESSION_HOURS + 'h')
@@ -33,6 +38,16 @@ export async function readSession(req) {
   } catch (err) {
     return null;
   }
+}
+
+// Exige administrador. O e-mail também é conferido na lista atual (ADMIN_EMAILS),
+// então remover alguém da variável revoga o acesso mesmo com sessão aberta.
+export async function requireAdmin(req, res) {
+  const session = await readSession(req);
+  if (!session) { res.status(401).json({ error: 'unauthorized' }); return null; }
+  const isAdmin = session.role === 'admin' && listFromEnv('ADMIN_EMAILS').includes(String(session.email).toLowerCase());
+  if (!isAdmin) { res.status(403).json({ error: 'forbidden' }); return null; }
+  return session;
 }
 
 export function sessionCookie(token) {

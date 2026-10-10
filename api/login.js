@@ -1,6 +1,6 @@
 // Valida o token do Google NO SERVIDOR e só então cria a sessão.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { createSession, isConfigured, sessionCookie } from './_session.js';
+import { createSession, isConfigured, listFromEnv, sessionCookie } from './_session.js';
 
 const GOOGLE_KEYS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
@@ -27,8 +27,8 @@ export default async function handler(req, res) {
 
   // 2) Confere o domínio. O campo "hd" só existe para contas Google Workspace do domínio.
   const domain = (process.env.ALLOWED_DOMAIN || 'magazord.com.br').toLowerCase();
-  const extras = (process.env.EXTRA_ALLOWED_EMAILS || '')
-    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const extras = listFromEnv('EXTRA_ALLOWED_EMAILS');
+  const admins = listFromEnv('ADMIN_EMAILS');
 
   const email = String(payload.email || '').toLowerCase();
   const verified = payload.email_verified === true;
@@ -36,11 +36,12 @@ export default async function handler(req, res) {
     String(payload.hd || '').toLowerCase() === domain &&
     email.endsWith('@' + domain);
   const isExtra = verified && extras.includes(email);
+  const isAdmin = verified && admins.includes(email);
 
-  if (!fromDomain && !isExtra) return res.status(403).json({ error: 'domain_not_allowed' });
+  if (!fromDomain && !isExtra && !isAdmin) return res.status(403).json({ error: 'domain_not_allowed' });
 
   // 3) Cria a sessão (cookie assinado, HttpOnly)
-  const token = await createSession({ email, name: payload.name });
+  const token = await createSession({ email, name: payload.name, role: isAdmin ? 'admin' : 'viewer' });
   res.setHeader('Set-Cookie', sessionCookie(token));
-  return res.status(200).json({ ok: true, email });
+  return res.status(200).json({ ok: true, email, role: isAdmin ? 'admin' : 'viewer' });
 }

@@ -2,52 +2,52 @@
 
 Biblioteca de consultas dinâmicas do time de Sucesso do Cliente · Magazord.
 
+## Como funciona
+- **Time** (`index.html`): entra com Google (`@magazord.com.br`), pesquisa, vê colunas e baixa os JSONs. Somente leitura.
+- **Admin** (`admin.html`): só e-mails em `ADMIN_EMAILS`. Cadastra e edita consultas e clica em **Publicar**.
+- **Publicar** grava `data/queries.json` no GitHub (um commit por publicação). A Vercel faz o deploy sozinha e o time vê a mudança em ~1 minuto.
+- O histórico de commits do GitHub é o histórico (e o backup) da biblioteca.
+
 ## Estrutura
 ```
-index.html              Aplicação
-login.html              Tela de login com Google
-css/style.css           Estilos (paleta Magazord)
-css/login.css           Estilos do login
-js/app.js               Lógica da biblioteca
-js/login.js             Lógica do login
-api/                    Funções do servidor (validação do Google e sessão)
-middleware.js           Bloqueia o site para quem não tem sessão válida
-data/queries.json       Biblioteca compartilhada (de preferência criptografada)
-vercel.json             Cabeçalhos de segurança
+index.html / admin.html     Páginas do time e do administrador
+login.html / privacidade.html
+css/                        Estilos (paleta Magazord)
+js/app.js, js/login.js      Lógica
+api/                        login, sessão e publicação (servidor)
+middleware.js               Bloqueia o site sem sessão e o /admin sem perfil de admin
+data/queries.json           Biblioteca publicada
+vercel.json                 Cabeçalhos de segurança
 ```
 
-## 1. Criar o login no Google Cloud
-1. Acesse https://console.cloud.google.com e crie um projeto (ex.: "QueryHub").
-2. Abra **APIs e serviços > Tela de consentimento OAuth** (ou "Google Auth Platform").
-   - Tipo de usuário: **Externo**. Informe o nome do app e seu e-mail de suporte.
-   - Escopos: apenas os básicos (openid, e-mail e perfil).
-   - Em **Status de publicação**, clique em **Publicar app**. Em "Teste", só entram e-mails cadastrados manualmente.
-3. Abra **Credenciais > Criar credenciais > ID do cliente OAuth** e escolha **Aplicativo da Web**.
-   - Origens JavaScript autorizadas: `https://SEU-PROJETO.vercel.app` (e `http://localhost:3000` para testes locais).
-   - Não precisa de URI de redirecionamento.
-4. Copie o **ID do cliente**.
-
-## 2. Publicar na Vercel
-1. Suba este projeto em um repositório **privado** do GitHub.
-2. Na Vercel: **Add New > Project**, importe o repositório (Framework Preset: Other).
-3. Em **Environment Variables**, crie:
-
+## Variáveis de ambiente (Vercel > Settings > Environment Variables)
 | Variável | Valor |
 |---|---|
-| `GOOGLE_CLIENT_ID` | ID do cliente copiado do Google |
-| `SESSION_SECRET` | texto aleatório com 32+ caracteres (ex.: `openssl rand -base64 48`) |
+| `GOOGLE_CLIENT_ID` | ID do cliente OAuth do Google |
+| `SESSION_SECRET` | texto aleatório com 32+ caracteres |
 | `ALLOWED_DOMAIN` | `magazord.com.br` (opcional, é o padrão) |
-| `EXTRA_ALLOWED_EMAILS` | e-mails extras liberados, separados por vírgula (opcional) |
+| `ADMIN_EMAILS` | e-mails dos administradores, separados por vírgula |
+| `GITHUB_TOKEN` | token do GitHub (veja abaixo) |
+| `GITHUB_REPO` | `usuario/nome-do-repositorio` |
+| `GITHUB_BRANCH` | `main` (opcional) |
+| `EXTRA_ALLOWED_EMAILS` | e-mails extras só para consulta (opcional) |
 
-4. Faça o deploy. Depois de criar o domínio final, volte ao Google Cloud e confira se a origem autorizada é exatamente o endereço do site.
+Depois de criar ou alterar variáveis, faça **Redeploy**.
 
-## 3. Testar
-- Aba anônima: abrir o site deve levar à tela de login.
-- Conta `@magazord.com.br`: entra.
-- Conta Gmail pessoal: recebe "Esta conta não tem acesso".
-- `https://SEU-SITE/data/queries.json` sem login: não pode devolver o arquivo.
+## Criar o token do GitHub
+1. GitHub > foto de perfil > **Settings > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token**.
+2. Resource owner: sua conta. **Repository access: Only select repositories** e escolha apenas o repositório do QueryHub.
+3. Em **Permissions > Repository permissions**, defina **Contents: Read and write**. Nenhuma outra permissão.
+4. Defina uma validade (ex.: 90 dias) e anote a data para renovar.
+5. Copie o token (começa com `github_pat_`) e cole só na Vercel, em `GITHUB_TOKEN`. Nunca no código nem no GitHub.
 
-## Atualizar a biblioteca do time
-1. No app, **Exportar** e informe uma senha de proteção.
-2. Substitua `data/queries.json` pelo arquivo gerado e faça o deploy.
-3. Os analistas clicam em **Sincronizar** e digitam a senha da biblioteca.
+## Testar
+- Aba anônima: abrir o site leva ao login.
+- Conta de administrador: aparece o botão "Painel admin" no topo.
+- Conta comum `@magazord.com.br`: entra, mas `/admin.html` volta para a página inicial.
+- No admin: cadastre uma consulta, clique em **Publicar**, confira o novo commit no GitHub e, após o deploy, veja a consulta na página do time.
+
+## Observações
+- Cada publicação gera um deploy. O plano gratuito da Vercel limita a quantidade de deploys por dia, então faça várias alterações e publique uma vez.
+- As alterações ficam em rascunho no navegador do admin até a publicação. "Descartar rascunho" recarrega o que está publicado.
+- As favoritas de cada pessoa ficam só no navegador dela.

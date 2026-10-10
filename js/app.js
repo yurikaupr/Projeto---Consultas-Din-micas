@@ -1,15 +1,19 @@
 /* ==========================================================================
    QueryHub | Lógica da aplicação
+   Dois modos, definidos por <body data-mode="viewer|admin">:
+   - viewer (index.html): consulta, busca, detalhes e download. Somente leitura.
+   - admin  (admin.html): cadastro, edição e publicação para o GitHub.
    ========================================================================== */
 (function () {
   'use strict';
 
   /* ---------- Configurações ---------- */
-  var STORAGE_KEY = 'queryhub:v1';
-  var SEED_URL = 'data/queries.json';
+  var ADMIN = document.body.getAttribute('data-mode') === 'admin';
+  var DATA_URL = 'data/queries.json';
+  var DRAFT_KEY = 'queryhub:admin-draft:v2';
+  var FAV_KEY = 'queryhub:favorites:v1';
   var MAX_CATEGORIES = 3;
   var MAX_HIGHLIGHTS = 4;
-  var PBKDF2_ITERATIONS = 310000;
 
   var CATEGORIES = [
     { name: 'Clientes',    color: '#2754d7' },
@@ -40,16 +44,25 @@
   /* ---------- Estado ---------- */
   var state = {
     queries: [],
+    favs: {},          // id -> true (guardado só no navegador de cada pessoa)
     search: '',
     category: '',      // '' = todas | '__fav' = favoritas | nome da categoria
     sort: 'name',
     selected: {},      // id -> true
     openId: null,
-    editing: null      // { query, isNew }
+    editing: null,     // { query, isNew }
+    dirty: false,      // admin: há alterações ainda não publicadas
+    publishing: false
   };
 
   /* ---------- Utilitários ---------- */
   function $(id) { return document.getElementById(id); }
+
+  // Registra um evento só se o elemento existir (o viewer não tem os controles de admin)
+  function on(id, evt, fn) {
+    var el = $(id);
+    if (el) el.addEventListener(evt, fn);
+  }
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
@@ -75,7 +88,7 @@
     el.textContent = message;
     el.classList.add('is-visible');
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(function () { el.classList.remove('is-visible'); }, 3600);
+    toast.timer = setTimeout(function () { el.classList.remove('is-visible'); }, 4200);
   }
 
   function humanize(name, title) {
@@ -100,94 +113,6 @@
   }
 
   function selectedIds() { return Object.keys(state.selected); }
-
-  /* ---------- Criptografia (AES-GCM + PBKDF2, via Web Crypto) ---------- */
-  function toB64(buffer) {
-    var bytes = new Uint8Array(buffer), s = '';
-    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    return btoa(s);
-  }
-
-  function fromB64(text) {
-    var s = atob(text), bytes = new Uint8Array(s.length);
-    for (var i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
-    return bytes;
-  }
-
-  function deriveKey(password, salt, iterations) {
-    return crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey'])
-      .then(function (material) {
-        return crypto.subtle.deriveKey(
-          { name: 'PBKDF2', salt: salt, iterations: iterations, hash: 'SHA-256' },
-          material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-        );
-      });
-  }
-
-  function encryptJson(value, password) {
-    var salt = crypto.getRandomValues(new Uint8Array(16));
-    var iv = crypto.getRandomValues(new Uint8Array(12));
-    return deriveKey(password, salt, PBKDF2_ITERATIONS)
-      .then(function (key) {
-        return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(JSON.stringify(value)));
-      })
-      .then(function (cipher) {
-        return {
-          queryhub_encrypted: 1,
-          kdf: 'PBKDF2-SHA256',
-          iterations: PBKDF2_ITERATIONS,
-          salt: toB64(salt),
-          iv: toB64(iv),
-          data: toB64(cipher)
-        };
-      });
-  }
-
-  function decryptJson(payload, password) {
-    return deriveKey(password, fromB64(payload.salt), payload.iterations || PBKDF2_ITERATIONS)
-      .then(function (key) {
-        return crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(payload.iv) }, key, fromB64(payload.data));
-      })
-      .then(function (plain) { return JSON.parse(new TextDecoder().decode(plain)); });
-  }
-
-  function isEncrypted(data) { return !!(data && !Array.isArray(data) && data.queryhub_encrypted); }
-  function isLibrary(data) { return Array.isArray(data) && (!data.length || (data[0] && data[0].raw_json)); }
-
-  /* Janela de senha: devolve uma Promise com a biblioteca descriptografada */
-  var unlockCtx = null;
-
-  function askUnlock(payload) {
-    return new Promise(function (resolve, reject) {
-      unlockCtx = { payload: payload, resolve: resolve, reject: reject };
-      $('unlockPass').value = '';
-      $('unlockError').textContent = '';
-      $('unlockModal').showModal();
-      $('unlockPass').focus();
-    });
-  }
-
-  function confirmUnlock() {
-    if (!unlockCtx) return;
-    var pass = $('unlockPass').value;
-    if (!pass) { $('unlockError').textContent = 'Digite a senha.'; return; }
-    $('unlockError').textContent = 'Verificando...';
-    decryptJson(unlockCtx.payload, pass).then(function (list) {
-      var ctx = unlockCtx;
-      unlockCtx = null;
-      $('unlockModal').close();
-      ctx.resolve(list);
-    }).catch(function () {
-      $('unlockError').textContent = 'Senha incorreta ou arquivo corrompido.';
-    });
-  }
-
-  function cancelUnlock() {
-    var ctx = unlockCtx;
-    unlockCtx = null;
-    if ($('unlockModal').open) $('unlockModal').close();
-    if (ctx) ctx.reject(new Error('Desbloqueio cancelado.'));
-  }
 
   /* ---------- Leitura do JSON da consulta dinâmica ---------- */
   function guessCategories(name) {
@@ -238,7 +163,6 @@
       name: name,
       categories: guessCategories(name),
       description: '',
-      favorite: false,
       source_filename: fileName,
       columns: columns,
       primary_columns: columns.slice(0, 3).map(function (c) { return c.name; }),
@@ -248,80 +172,63 @@
     };
   }
 
-  /* ---------- Armazenamento ---------- */
-  function saveStorage() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.queries));
-      return true;
-    } catch (err) {
-      toast('Não foi possível salvar: o armazenamento do navegador está cheio.');
-      return false;
-    }
+  /* ---------- Favoritas (somente no navegador de cada pessoa) ---------- */
+  function loadFavs() {
+    try { state.favs = JSON.parse(localStorage.getItem(FAV_KEY) || '{}') || {}; } catch (err) { state.favs = {}; }
   }
 
-  function loadStorage() {
-    try {
-      var saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch (err) {
-      return null;
-    }
-  }
-
-  function refresh() {
-    saveStorage();
+  function toggleFav(id) {
+    if (state.favs[id]) delete state.favs[id]; else state.favs[id] = true;
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(state.favs)); } catch (err) { /* sem espaço: ignora */ }
     renderAll();
   }
 
-  /* ---------- Biblioteca base do projeto (data/queries.json) ---------- */
-  function findIndex(item) {
-    var idx = -1;
-    state.queries.forEach(function (q, i) {
-      if (q.id === item.id || (item.source_filename && q.source_filename === item.source_filename)) idx = i;
-    });
-    return idx;
+  /* ---------- Rascunho do admin (guardado no navegador até publicar) ---------- */
+  function loadDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (err) { return null; }
   }
 
-  // Une uma lista de consultas à biblioteca atual (atualiza as existentes, preserva favoritas)
-  function mergeLibrary(list) {
-    var added = 0, updated = 0;
-    list.forEach(function (item) {
-      var idx = findIndex(item);
-      if (idx >= 0) {
-        item.favorite = state.queries[idx].favorite || item.favorite;
-        state.queries[idx] = item;
-        updated++;
-      } else {
-        state.queries.unshift(item);
-        added++;
-      }
-    });
-    return { added: added, updated: updated };
+  function saveDraft() {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ queries: state.queries, dirty: state.dirty }));
+    } catch (err) {
+      toast('O rascunho é grande demais para o navegador. Publique logo para não perder as alterações.');
+    }
   }
 
-  function fetchSeed() {
-    return fetch(SEED_URL, { cache: 'no-store' }).then(function (res) {
+  // Chamado depois de qualquer alteração na biblioteca
+  function changed() {
+    if (ADMIN) { state.dirty = true; saveDraft(); }
+    renderAll();
+  }
+
+  /* ---------- Carregamento da biblioteca ---------- */
+  function fetchLibrary() {
+    return fetch(DATA_URL, { cache: 'no-store' }).then(function (res) {
       if (res.status === 401) { window.location.replace('/login.html'); throw new Error('Sessão expirada.'); }
-      if (!res.ok) throw new Error('Arquivo ' + SEED_URL + ' não encontrado.');
+      if (!res.ok) throw new Error('Não foi possível carregar a biblioteca.');
       return res.json();
-    }).then(function (data) {
-      if (isEncrypted(data)) return askUnlock(data);
-      return Array.isArray(data) ? data : [];
-    });
+    }).then(function (data) { return Array.isArray(data) ? data : []; });
   }
 
-  function syncSeed(silent) {
-    return fetchSeed().then(function (list) {
-      if (!list.length) {
-        if (!silent) toast('A biblioteca do time ainda está vazia.');
+  function init() {
+    loadUser();
+    loadFavs();
+
+    if (ADMIN) {
+      var draft = loadDraft();
+      if (draft && Array.isArray(draft.queries) && (draft.queries.length || draft.dirty)) {
+        state.queries = draft.queries;
+        state.dirty = !!draft.dirty;
+        renderAll();
         return;
       }
-      var r = mergeLibrary(list);
-      refresh();
-      toast('Biblioteca sincronizada: ' + r.added + ' nova(s), ' + r.updated + ' atualizada(s).');
-    }).catch(function (err) {
-      if (!silent) toast(err.message);
-    });
+    }
+
+    fetchLibrary()
+      .then(function (list) { state.queries = list; })
+      .catch(function (err) { toast(err.message); })
+      .then(renderAll);
   }
 
   /* ---------- Sessão (login com Google, ativo apenas no site publicado) ---------- */
@@ -331,8 +238,11 @@
       return res.ok ? res.json() : null;
     }).then(function (user) {
       if (!user) return;
+      if (ADMIN && user.role !== 'admin') { window.location.replace('/'); return; }
       $('userEmail').textContent = user.email;
       $('userBox').classList.remove('hidden');
+      var adminLink = $('adminLink');
+      if (adminLink && user.role === 'admin') adminLink.classList.remove('hidden');
     }).catch(function () { /* sem /api (ex.: Live Server): segue sem mostrar o usuário */ });
   }
 
@@ -340,18 +250,6 @@
     fetch('/api/logout', { method: 'POST' }).finally(function () {
       window.location.replace('/login.html');
     });
-  }
-
-  function init() {
-    loadUser();
-    var saved = loadStorage();
-    if (saved && saved.length) {
-      state.queries = saved;
-      renderAll();
-      return;
-    }
-    renderAll();
-    syncSeed(true);
   }
 
   /* ---------- Renderização: lista ---------- */
@@ -365,7 +263,7 @@
     var list = state.queries.filter(function (q) {
       var cats = q.categories || ['Outros'];
       if (state.category === '__fav') {
-        if (!q.favorite) return false;
+        if (!state.favs[q.id]) return false;
       } else if (state.category && cats.indexOf(state.category) === -1) {
         return false;
       }
@@ -406,6 +304,7 @@
     var highlights = highlightColumns(q);
     var extra = (q.columns || []).length - highlights.length;
     var id = esc(q.id);
+    var fav = !!state.favs[q.id];
 
     return '' +
       '<article class="query-card' + (state.selected[q.id] ? ' is-selected' : '') + '">' +
@@ -421,7 +320,7 @@
         '</div>' +
         '<div class="query-card__actions">' +
           '<label class="query-card__select" title="Selecionar"><input type="checkbox" data-select="' + id + '"' + (state.selected[q.id] ? ' checked' : '') + '></label>' +
-          '<button type="button" class="star-btn' + (q.favorite ? ' is-on' : '') + '" data-action="fav" data-id="' + id + '" aria-label="Favoritar" title="Favoritar">' + (q.favorite ? '★' : '☆') + '</button>' +
+          '<button type="button" class="star-btn' + (fav ? ' is-on' : '') + '" data-action="fav" data-id="' + id + '" aria-label="Favoritar" title="Favoritar">' + (fav ? '★' : '☆') + '</button>' +
           '<button type="button" class="link-btn" data-action="open" data-id="' + id + '">Ver colunas</button>' +
           '<button type="button" class="btn btn--primary btn--sm" data-action="download" data-id="' + id + '">Baixar JSON</button>' +
         '</div>' +
@@ -431,7 +330,7 @@
   function renderChips() {
     var counts = {}, favs = 0;
     state.queries.forEach(function (q) {
-      if (q.favorite) favs++;
+      if (state.favs[q.id]) favs++;
       (q.categories || ['Outros']).forEach(function (c) { counts[c] = (counts[c] || 0) + 1; });
     });
 
@@ -465,7 +364,7 @@
       $('emptyTitle').textContent = hasData ? 'Nenhuma consulta encontrada' : 'Nenhuma consulta cadastrada';
       $('emptyText').textContent = hasData
         ? 'Tente outro termo de busca ou remova o filtro.'
-        : 'Clique em "Cadastrar consultas" para enviar um JSON, vários arquivos ou um ZIP.';
+        : (ADMIN ? 'Clique em "Cadastrar consultas" para enviar um JSON, vários arquivos ou um ZIP.' : 'A biblioteca ainda não tem consultas publicadas.');
     }
   }
 
@@ -475,15 +374,25 @@
     $('bulkCount').textContent = n + (n === 1 ? ' selecionada' : ' selecionadas');
   }
 
+  function renderPublish() {
+    if (!ADMIN) return;
+    $('btnPublish').textContent = state.publishing ? 'Publicando...' : (state.dirty ? 'Publicar alterações ●' : 'Publicar');
+    $('btnPublish').disabled = state.publishing;
+    $('publishHint').textContent = state.dirty
+      ? 'Há alterações não publicadas. O time só vê o que for publicado.'
+      : 'Tudo publicado. Esta é a mesma biblioteca que o time está vendo.';
+  }
+
   function renderAll() {
     renderChips();
     renderList();
     renderBulk();
+    renderPublish();
   }
 
   /* ---------- Drawer de detalhes ---------- */
   function updateFavButton(q) {
-    $('drawerFav').textContent = q.favorite ? '★ Favorita' : '☆ Favoritar';
+    $('drawerFav').textContent = state.favs[q.id] ? '★ Favorita' : '☆ Favoritar';
   }
 
   function openDrawer(id) {
@@ -564,33 +473,111 @@
     });
   }
 
-  function exportLibrary() {
-    if (!state.queries.length) { toast('Não há consultas para exportar.'); return; }
-    $('exportPass').value = '';
-    $('exportModal').showModal();
+  /* ==========================================================================
+     Somente admin
+     ========================================================================== */
+
+  /* ---------- Publicar para o GitHub ---------- */
+  var PUBLISH_ERRORS = {
+    github_not_configured: 'O GitHub ainda não foi configurado na Vercel (GITHUB_TOKEN e GITHUB_REPO).',
+    github_auth: 'O token do GitHub foi recusado. Verifique se ele não expirou e se tem permissão de escrita em "Contents".',
+    github_repo: 'Repositório não encontrado. Confira a variável GITHUB_REPO.',
+    github_write: 'O GitHub recusou a gravação do arquivo.',
+    github_read: 'Não foi possível ler o repositório no GitHub.',
+    github_conflict: 'O arquivo mudou durante a publicação. Tente novamente.',
+    invalid_library: 'A biblioteca enviada é inválida ou está vazia.',
+    forbidden: 'Seu usuário não é administrador.'
+  };
+
+  function gzip(text) {
+    var stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Response(stream).blob();
   }
 
-  function confirmExport() {
-    var pass = $('exportPass').value;
-    var finish = function (payload) {
-      download('queries.json', JSON.stringify(payload));
-      $('exportModal').close();
-      toast('Exportado. Publique o arquivo em data/queries.json para compartilhar com o time.');
-    };
-    if (!pass) {
-      if (!window.confirm('Exportar SEM senha? Qualquer pessoa com acesso ao link poderá ler as consultas.')) return;
-      finish(state.queries);
-      return;
-    }
-    if (pass.length < 8) { toast('Use uma senha com pelo menos 8 caracteres.'); return; }
-    encryptJson(state.queries, pass).then(finish).catch(function () { toast('Não foi possível criptografar neste navegador.'); });
+  function publish() {
+    if (state.publishing) return;
+    if (!state.dirty) { toast('Não há alterações para publicar.'); return; }
+    if (!state.queries.length) { toast('A biblioteca está vazia. Cadastre consultas antes de publicar.'); return; }
+    if (!window.CompressionStream) { toast('Seu navegador é antigo para publicar. Atualize o Chrome, Edge ou Safari.'); return; }
+    if (!window.confirm('Publicar ' + state.queries.length + ' consulta(s) para o time? O site atualiza em cerca de 1 minuto.')) return;
+
+    state.publishing = true;
+    renderPublish();
+
+    var finish = function () { state.publishing = false; renderPublish(); };
+
+    gzip(JSON.stringify(state.queries)).then(function (blob) {
+      return fetch('/api/admin/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: blob
+      });
+    }).then(function (res) {
+      if (res.status === 401) { window.location.replace('/login.html'); return null; }
+      if (res.status === 404) throw new Error('A publicação só funciona no site publicado na Vercel.');
+      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      if (!result) return;
+      if (!result.ok) throw new Error(PUBLISH_ERRORS[result.data.error] || 'Não foi possível publicar (' + result.data.error + ').');
+      state.dirty = false;
+      saveDraft();
+      toast('Publicado! O time verá as mudanças em cerca de 1 minuto, quando o deploy terminar.');
+    }).catch(function (err) {
+      toast(err.message);
+    }).then(finish);
+  }
+
+  function discardDraft() {
+    if (!window.confirm('Descartar o rascunho e recarregar a biblioteca publicada? As alterações não publicadas serão perdidas.')) return;
+    try { localStorage.removeItem(DRAFT_KEY); } catch (err) { /* ignora */ }
+    state.dirty = false;
+    state.selected = {};
+    closeDrawer();
+    fetchLibrary()
+      .then(function (list) { state.queries = list; toast('Biblioteca recarregada.'); })
+      .catch(function (err) { toast(err.message); })
+      .then(renderAll);
   }
 
   /* ---------- Importação ---------- */
+  function findIndex(item) {
+    var idx = -1;
+    state.queries.forEach(function (q, i) {
+      if (q.id === item.id || (item.source_filename && q.source_filename === item.source_filename)) idx = i;
+    });
+    return idx;
+  }
+
+  // Une consultas à biblioteca: arquivos com o mesmo nome atualizam a consulta existente
+  function mergeLibrary(list, keepData) {
+    var added = 0, updated = 0;
+    list.forEach(function (item) {
+      var idx = findIndex(item);
+      if (idx >= 0) {
+        var old = state.queries[idx];
+        if (!keepData) {
+          // Reenvio do mesmo arquivo: atualiza o JSON, mantém o que já foi cadastrado
+          item.id = old.id;
+          item.categories = old.categories;
+          item.description = old.description;
+          item.created_at = old.created_at;
+          item.primary_columns = old.primary_columns;
+        }
+        state.queries[idx] = item;
+        updated++;
+      } else {
+        state.queries.unshift(item);
+        added++;
+      }
+    });
+    return { added: added, updated: updated };
+  }
+
+  function isLibrary(data) { return Array.isArray(data) && data.length && data[0] && data[0].raw_json; }
+
   function readJsonFile(file) {
     return file.text().then(function (text) {
       var data = JSON.parse(text);
-      if (isEncrypted(data)) return askUnlock(data).then(function (list) { return { library: list }; });
       if (isLibrary(data)) return { library: data };
       return { query: parseQuery(data, file.name) };
     });
@@ -656,12 +643,13 @@
         return;
       }
 
-      var r = mergeLibrary(queries);
-      refresh();
+      var r = mergeLibrary(queries, hasLibrary);
+      changed();
+
       var msg = r.added + ' nova(s)';
       if (r.updated) msg += ', ' + r.updated + ' atualizada(s)';
       if (errors.length) msg += ', ' + errors.length + ' com erro';
-      setStatus(msg + '. Use a seleção na lista para ajustar categorias em lote.');
+      setStatus(msg + '. Use a seleção na lista para ajustar categorias em lote e depois clique em Publicar.');
       toast(msg + '.');
     }).catch(function (err) {
       setStatus('Erro ao ler os arquivos: ' + err.message);
@@ -782,13 +770,13 @@
     });
 
     if (ctx.isNew) {
-      var r = mergeLibrary([q]);
-      toast(r.updated ? 'Consulta existente atualizada.' : 'Consulta cadastrada.');
+      var r = mergeLibrary([q], true);
+      toast(r.updated ? 'Consulta existente atualizada. Clique em Publicar para enviar ao time.' : 'Consulta cadastrada. Clique em Publicar para enviar ao time.');
     } else {
-      toast('Consulta salva.');
+      toast('Consulta salva. Clique em Publicar para enviar ao time.');
     }
 
-    refresh();
+    changed();
     if (state.openId === q.id) openDrawer(q.id);
     $('editModal').close();
   }
@@ -801,7 +789,7 @@
     state.queries = state.queries.filter(function (item) { return item.id !== q.id; });
     delete state.selected[q.id];
     closeDrawer();
-    refresh();
+    changed();
     $('editModal').close();
     toast('Consulta excluída.');
   }
@@ -822,7 +810,7 @@
       var q = findQuery(id);
       if (q) q.categories = cats.slice();
     });
-    refresh();
+    changed();
     $('bulkModal').close();
     toast('Categorias aplicadas.');
   }
@@ -832,7 +820,7 @@
     if (!window.confirm('Excluir ' + ids.length + ' consulta(s) selecionada(s)?')) return;
     state.queries = state.queries.filter(function (q) { return !state.selected[q.id]; });
     state.selected = {};
-    refresh();
+    changed();
     toast(ids.length + ' consulta(s) excluída(s).');
   }
 
@@ -844,18 +832,13 @@
 
   /* ---------- Eventos ---------- */
   function bindEvents() {
-    // Cabeçalho
-    $('btnImport').addEventListener('click', function () { switchTab('single'); $('importModal').showModal(); });
-    $('btnExport').addEventListener('click', exportLibrary);
-    $('btnSync').addEventListener('click', function () { syncSeed(false); });
-    $('btnLogout').addEventListener('click', logout);
-    $('exportConfirm').addEventListener('click', confirmExport);
+    on('btnLogout', 'click', logout);
 
     // Busca e filtros
-    $('searchInput').addEventListener('input', function (e) { state.search = e.target.value; renderList(); });
-    $('sortSelect').addEventListener('change', function (e) { state.sort = e.target.value; renderList(); });
+    on('searchInput', 'input', function (e) { state.search = e.target.value; renderList(); });
+    on('sortSelect', 'change', function (e) { state.sort = e.target.value; renderList(); });
 
-    $('categoryChips').addEventListener('click', function (e) {
+    on('categoryChips', 'click', function (e) {
       var chip = e.target.closest('[data-category]');
       if (!chip) return;
       state.category = chip.dataset.category;
@@ -863,19 +846,16 @@
     });
 
     // Lista
-    $('queryList').addEventListener('click', function (e) {
+    on('queryList', 'click', function (e) {
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
       var id = btn.dataset.id;
       if (btn.dataset.action === 'open') openDrawer(id);
       if (btn.dataset.action === 'download') downloadQuery(id);
-      if (btn.dataset.action === 'fav') {
-        var q = findQuery(id);
-        if (q) { q.favorite = !q.favorite; refresh(); }
-      }
+      if (btn.dataset.action === 'fav') toggleFav(id);
     });
 
-    $('queryList').addEventListener('change', function (e) {
+    on('queryList', 'change', function (e) {
       var box = e.target.closest('[data-select]');
       if (!box) return;
       if (box.checked) state.selected[box.dataset.select] = true;
@@ -884,7 +864,7 @@
       renderBulk();
     });
 
-    $('selectAll').addEventListener('change', function (e) {
+    on('selectAll', 'change', function (e) {
       visibleQueries().forEach(function (q) {
         if (e.target.checked) state.selected[q.id] = true;
         else delete state.selected[q.id];
@@ -893,43 +873,60 @@
       renderBulk();
     });
 
-    $('btnZipList').addEventListener('click', function () { downloadZip(visibleQueries(), 'consultas.zip'); });
+    on('btnZipList', 'click', function () { downloadZip(visibleQueries(), 'consultas.zip'); });
 
     // Barra em lote
-    $('bulkCategories').addEventListener('click', openBulkCategories);
-    $('bulkApply').addEventListener('click', applyBulkCategories);
-    $('bulkPicker').addEventListener('change', function () { limitChecks('bulkPicker', MAX_CATEGORIES, 'bulkPickerCount'); });
-    $('bulkZip').addEventListener('click', function () {
+    on('bulkZip', 'click', function () {
       downloadZip(selectedIds().map(findQuery).filter(Boolean), 'consultas_selecionadas.zip');
     });
-    $('bulkDelete').addEventListener('click', bulkDelete);
-    $('bulkClear').addEventListener('click', clearSelection);
+    on('bulkClear', 'click', clearSelection);
 
     // Drawer
-    $('drawerClose').addEventListener('click', closeDrawer);
-    $('drawerOverlay').addEventListener('click', closeDrawer);
-    $('colSearch').addEventListener('input', renderDrawerColumns);
-    $('copyCols').addEventListener('click', copyColumns);
-    $('drawerDownload').addEventListener('click', function () { downloadQuery(state.openId); });
-    $('drawerFav').addEventListener('click', function () {
+    on('drawerClose', 'click', closeDrawer);
+    on('drawerOverlay', 'click', closeDrawer);
+    on('colSearch', 'input', renderDrawerColumns);
+    on('copyCols', 'click', copyColumns);
+    on('drawerDownload', 'click', function () { downloadQuery(state.openId); });
+    on('drawerFav', 'click', function () {
       var q = findQuery(state.openId);
       if (!q) return;
-      q.favorite = !q.favorite;
+      toggleFav(q.id);
       updateFavButton(q);
-      refresh();
     });
-    $('drawerEdit').addEventListener('click', function () {
+
+    // Atalhos
+    document.addEventListener('keydown', function (e) {
+      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      if (e.key === '/' && !typing && !document.querySelector('dialog[open]')) {
+        e.preventDefault();
+        $('searchInput').focus();
+      }
+      if (e.key === 'Escape' && state.openId && !document.querySelector('dialog[open]')) closeDrawer();
+    });
+
+    if (!ADMIN) return;
+
+    // ----- Somente admin -----
+    on('btnPublish', 'click', publish);
+    on('btnDiscard', 'click', discardDraft);
+    on('btnImport', 'click', function () { switchTab('single'); $('importModal').showModal(); });
+
+    on('drawerEdit', 'click', function () {
       var q = findQuery(state.openId);
       if (q) openEditor(q, false);
     });
 
-    // Cadastro
+    on('bulkCategories', 'click', openBulkCategories);
+    on('bulkApply', 'click', applyBulkCategories);
+    on('bulkPicker', 'change', function () { limitChecks('bulkPicker', MAX_CATEGORIES, 'bulkPickerCount'); });
+    on('bulkDelete', 'click', bulkDelete);
+
     document.querySelectorAll('.tabs__btn').forEach(function (b) {
       b.addEventListener('click', function () { switchTab(b.dataset.tab); });
     });
-    $('singleFile').addEventListener('change', function (e) { handleSingleFile(e.target.files[0]); });
-    $('btnPaste').addEventListener('click', handlePaste);
-    $('batchFile').addEventListener('change', function (e) { handleBatch(e.target.files); });
+    on('singleFile', 'change', function (e) { handleSingleFile(e.target.files[0]); });
+    on('btnPaste', 'click', handlePaste);
+    on('batchFile', 'change', function (e) { handleBatch(e.target.files); });
 
     [['batchDrop', handleBatch], ['singleDrop', function (files) { handleSingleFile(files[0]); }]].forEach(function (pair) {
       var zone = $(pair[0]);
@@ -942,36 +939,22 @@
       zone.addEventListener('drop', function (e) { pair[1](e.dataTransfer.files); });
     });
 
-    // Edição
-    $('catPicker').addEventListener('change', function () { limitChecks('catPicker', MAX_CATEGORIES, 'catCount'); });
-    $('colPicker').addEventListener('change', function () { limitChecks('colPicker', MAX_HIGHLIGHTS, 'colCount', ' em destaque'); });
-    $('editSave').addEventListener('click', saveEditor);
-    $('editDelete').addEventListener('click', deleteEditing);
-
-    // Desbloqueio
-    $('unlockConfirm').addEventListener('click', confirmUnlock);
-    $('unlockCancel').addEventListener('click', cancelUnlock);
-    $('unlockPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmUnlock(); });
-    $('unlockModal').addEventListener('cancel', function (e) { e.preventDefault(); cancelUnlock(); });
-    $('exportPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmExport(); });
+    on('catPicker', 'change', function () { limitChecks('catPicker', MAX_CATEGORIES, 'catCount'); });
+    on('colPicker', 'change', function () { limitChecks('colPicker', MAX_HIGHLIGHTS, 'colCount', ' em destaque'); });
+    on('editSave', 'click', saveEditor);
+    on('editDelete', 'click', deleteEditing);
 
     // Fechar modais (× / Cancelar / clique fora)
     document.querySelectorAll('[data-close]').forEach(function (btn) {
       btn.addEventListener('click', function () { $(btn.dataset.close).close(); });
     });
     document.querySelectorAll('dialog').forEach(function (dlg) {
-      if (dlg.id === 'unlockModal') return;
       dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
     });
 
-    // Atalhos
-    document.addEventListener('keydown', function (e) {
-      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-      if (e.key === '/' && !typing && !document.querySelector('dialog[open]')) {
-        e.preventDefault();
-        $('searchInput').focus();
-      }
-      if (e.key === 'Escape' && state.openId && !document.querySelector('dialog[open]')) closeDrawer();
+    // Avisa antes de sair com alterações não publicadas
+    window.addEventListener('beforeunload', function (e) {
+      if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
     });
   }
 
