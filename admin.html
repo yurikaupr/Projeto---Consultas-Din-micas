@@ -33,6 +33,7 @@
         </span>
         <a class="btn" href="index.html">Ver como time</a>
         <button type="button" class="btn" id="btnDiscard" title="Descarta o rascunho e recarrega a biblioteca publicada">Descartar rascunho</button>
+        <button type="button" class="btn hidden" id="btnReport" title="Abre o relatório da última importação">Relatório <span class="count-badge hidden" id="reportBadge"></span></button>
         <button type="button" class="btn" id="btnImport">+ Cadastrar</button>
         <button type="button" class="btn btn--primary" id="btnPublish">Publicar</button>
       </div>
@@ -177,7 +178,7 @@
     <p class="modal__status" id="importStatus"></p>
 
     <div class="modal__foot">
-      <span></span>
+      <button type="button" class="btn btn--sm" id="importGuide">Guia de mensagens</button>
       <button type="button" class="btn" data-close="importModal">Fechar</button>
     </div>
   </dialog>
@@ -191,6 +192,8 @@
       </div>
       <button type="button" class="icon-btn" data-close="editModal" aria-label="Fechar">×</button>
     </div>
+
+    <div class="edit-warnings hidden" id="editWarnings"></div>
 
     <div class="form">
       <div class="field">
@@ -241,6 +244,59 @@
         <button type="button" class="btn" data-close="bulkModal">Cancelar</button>
         <button type="button" class="btn btn--primary" id="bulkApply">Aplicar</button>
       </div>
+    </div>
+  </dialog>
+
+
+  <!-- ========== Modal: relatório de importação ========== -->
+  <dialog class="modal modal--xl" id="reportModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Relatório de importação</h2>
+        <p class="modal__sub" id="reportSub"></p>
+      </div>
+      <button type="button" class="icon-btn" data-close="reportModal" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="rsummary" id="reportSummary"></div>
+
+    <div class="rbar">
+      <div class="rtabs" role="tablist">
+        <button type="button" class="rtab is-active" data-rtab="erro">Erros <em>0</em></button>
+        <button type="button" class="rtab" data-rtab="aviso">Avisos <em>0</em></button>
+        <button type="button" class="rtab" data-rtab="ignorado">Ignorados <em>0</em></button>
+      </div>
+      <input type="search" id="reportSearch" class="mini-input rsearch" placeholder="Buscar arquivo ou mensagem">
+    </div>
+
+    <div class="rlist" id="reportList"></div>
+
+    <div class="modal__foot rfoot">
+      <div class="modal__foot-actions">
+        <button type="button" class="btn btn--sm" id="reportCsv">Baixar relatório (CSV)</button>
+        <button type="button" class="btn btn--sm" id="reportCopy">Copiar resumo dos erros</button>
+        <button type="button" class="btn btn--sm" id="reportGuide">Guia de mensagens</button>
+      </div>
+      <div class="modal__foot-actions">
+        <button type="button" class="btn btn--sm" id="reportMore">Enviar arquivos corrigidos</button>
+        <button type="button" class="btn btn--primary btn--sm" data-close="reportModal">Fechar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ========== Modal: guia de mensagens ========== -->
+  <dialog class="modal modal--xl" id="guideModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Guia de mensagens</h2>
+        <p class="modal__sub">Todas as situações que o sistema reconhece ao importar, o que significam e como resolver.</p>
+      </div>
+      <button type="button" class="icon-btn" data-close="guideModal" aria-label="Fechar">×</button>
+    </div>
+    <div class="guide-body" id="guideBody"></div>
+    <div class="modal__foot">
+      <span></span>
+      <button type="button" class="btn btn--primary" data-close="guideModal">Fechar</button>
     </div>
   </dialog>
 
