@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Entrar | QueryHub</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <div class="brand-strip"></div>
+
+  <main class="login">
+    <section class="login__card">
+      <div class="brand login__brand">
+        <span class="brand__symbol"><i></i><i></i><i></i><i></i></span>
+        <div>
+          <strong class="brand__name">QueryHub</strong>
+          <small class="brand__sub">Sucesso do Cliente · Magazord</small>
+        </div>
+      </div>
+
+      <h1 class="login__title">Entrar</h1>
+      <p class="login__text" id="loginText">Use sua conta Google corporativa para acessar a biblioteca de consultas.</p>
+
+      <div class="login__button" id="googleButton"></div>
+      <p class="login__error" id="loginError" role="alert"></p>
+      <p class="login__legal"><a href="privacidade.html">Política de Privacidade</a></p>
+    </section>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="js/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "queryhub",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "dependencies": {
+    "@vercel/edge": "^1.2.1",
+    "jose": "^5.9.6"
+  }
+}
