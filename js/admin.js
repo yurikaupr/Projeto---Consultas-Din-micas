@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('admin', '3.1.0');
+  if (window.QHBuild) window.QHBuild.report('admin', '3.2.0');
 
   var QH = window.QH;
   if (!QH || !QH.ADMIN) return;
@@ -1173,9 +1173,12 @@
     return true;
   };
 
+  var REVIEW_LABELS = { pending: 'Pendentes', nodesc: 'Sem descrição', others: 'Só em "Outros"', warn: 'Com aviso' };
+  QH.reviewLabel = function (mode) { return REVIEW_LABELS[mode] || mode; };
+
   function setReview(mode) {
     state.review = mode;
-    $('reviewFilter').value = mode;
+    QH.renderChips();
     QH.renderList();
     renderReview();
   }
@@ -1191,11 +1194,14 @@
     });
     var ready = total - pending;
     $('reviewPanel').classList.toggle('hidden', !total);
-    $('reviewCount').textContent = total ? (pending ? ready + ' de ' + total + ' consultas prontas (com descrição e categoria definida)' : 'Tudo revisado: ' + total + ' consultas prontas ✓') : '';
+    $('reviewCount').textContent = pending ? ready + ' de ' + total + ' prontas' : 'Tudo revisado ✓';
     $('reviewFill').style.width = (total ? Math.round(ready / total * 100) : 0) + '%';
-    var items = [['pending', 'Pendentes', pending], ['nodesc', 'Sem descrição', nodesc], ['others', 'Só em "Outros"', others], ['warn', 'Com aviso', warn]];
-    $('reviewChips').innerHTML = items.map(function (it) {
-      return '<button type="button" class="chip chip--review' + (state.review === it[0] ? ' is-active' : '') + '" data-review="' + it[0] + '">' + esc(it[1]) + ' <span class="chip__count">' + it[2] + '</span></button>';
+    var btn = $('reviewPending');
+    btn.classList.toggle('hidden', !pending);
+    btn.textContent = state.review === 'pending' ? 'Ver todas' : 'Ver pendentes (' + pending + ')';
+    var items = [['', 'Todas', total], ['pending', 'Pendentes', pending], ['nodesc', 'Sem descrição', nodesc], ['others', 'Só em "Outros"', others], ['warn', 'Com aviso', warn]];
+    $('reviewOptions').innerHTML = items.map(function (it) {
+      return '<button type="button" class="chip' + (state.review === it[0] ? ' is-active' : '') + '" data-review="' + it[0] + '">' + esc(it[1]) + ' <span class="chip__count">' + it[2] + '</span></button>';
     }).join('');
   }
 
@@ -1571,11 +1577,11 @@
     on('btnDiscard', 'click', discardDraft);
     on('menuGuide', 'click', openGuide);
 
-    on('reviewFilter', 'change', function (e) { setReview(e.target.value); });
-    on('reviewChips', 'click', function (e) {
+    on('reviewOptions', 'click', function (e) {
       var b = e.target.closest('[data-review]');
-      if (b) setReview(state.review === b.getAttribute('data-review') ? '' : b.getAttribute('data-review'));
+      if (b) setReview(b.getAttribute('data-review'));
     });
+    on('reviewPending', 'click', function () { setReview(state.review === 'pending' ? '' : 'pending'); });
 
     on('drawerEdit', 'click', function () {
       var q = findQuery(state.openId);

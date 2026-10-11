@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('app', '3.1.0');
+  if (window.QHBuild) window.QHBuild.report('app', '3.2.0');
 
   /* ---------- Configurações ---------- */
   var ADMIN = document.body.getAttribute('data-mode') === 'admin';
@@ -427,8 +427,7 @@
   /* ---------- Renderização ---------- */
   function renderChips() {
     var c = state.counts, sel = state.cats, n = selectedCats().length;
-    var html = '<button type="button" class="chip' + (!n && !state.onlyFav ? ' is-active' : '') + '" data-chip="all">Todas <span class="chip__count">' + c.all + '</span></button>' +
-      '<button type="button" class="chip' + (state.onlyFav ? ' is-active' : '') + '" data-chip="fav">★ Favoritas <span class="chip__count">' + c.fav + '</span></button>';
+    var html = '<button type="button" class="chip' + (state.onlyFav ? ' is-active' : '') + '" data-chip="fav" aria-pressed="' + (state.onlyFav ? 'true' : 'false') + '">★ Favoritas <span class="chip__count">' + c.fav + '</span></button>';
     CATEGORIES.forEach(function (cat) {
       html += '<button type="button" class="chip' + (sel[cat.name] ? ' is-active' : '') + '" data-chip="cat" data-cat="' + esc(cat.name) + '" aria-pressed="' + (sel[cat.name] ? 'true' : 'false') + '">' +
         '<span class="chip__dot" style="background:' + cat.color + '"></span>' + esc(cat.name) + ' <span class="chip__count">' + (c.byCat[cat.name] || 0) + '</span></button>';
@@ -438,13 +437,55 @@
         '<button type="button" data-catmode="all" class="' + (state.catMode === 'all' ? 'is-active' : '') + '">Todas</button></span>';
     }
     $('categoryChips').innerHTML = html;
+    renderActive();
+  }
+
+  // Filtros ativos: aparecem como etiquetas que podem ser removidas
+  function activeList() {
+    var out = [];
+    selectedCats().forEach(function (c) { out.push({ key: 'cat:' + c, label: c, color: categoryOf(c).color }); });
+    if (state.onlyFav) out.push({ key: 'fav', label: '★ Favoritas' });
+    if (state.review) out.push({ key: 'review', label: QH.reviewLabel ? QH.reviewLabel(state.review) : state.review });
+    return out;
+  }
+
+  function renderActive() {
+    var list = activeList(), box = $('activeFilters'), badge = $('filterBadge');
+    badge.textContent = list.length;
+    badge.classList.toggle('hidden', !list.length);
+    box.classList.toggle('hidden', !list.length);
+    var html = list.map(function (a) {
+      return '<button type="button" class="pill-filter" data-remove="' + esc(a.key) + '" aria-label="Remover filtro ' + esc(a.label) + '">' +
+        (a.color ? '<span class="chip__dot" style="background:' + a.color + '"></span>' : '') + esc(a.label) + ' <span aria-hidden="true">×</span></button>';
+    }).join('');
+    if (selectedCats().length >= 2) html += '<span class="active-note">' + (state.catMode === 'all' ? 'com todas as categorias' : 'com qualquer categoria') + '</span>';
+    if (list.length > 1) html += '<button type="button" class="link-btn" data-remove="all">Limpar</button>';
+    box.innerHTML = html;
+  }
+
+  function setFilters(open) {
+    $('filterPanel').classList.toggle('is-open', open);
+    $('filterBackdrop').classList.toggle('is-open', open);
+    $('filters').classList.toggle('is-open', open);
+    $('btnFilters').setAttribute('aria-expanded', String(open));
+    $('filterPanel').setAttribute('aria-hidden', String(!open));
+  }
+
+  function filtersOpen() { return $('filterPanel').classList.contains('is-open'); }
+
+  // Limpa categorias, favoritas e revisão (a busca continua como está)
+  function clearChips() {
+    state.cats = {}; state.onlyFav = false; state.review = '';
+    renderChips();
+    renderList();
+    if (QH.afterRender) QH.afterRender();
   }
 
   function updateResultsHead() {
     var total = state.queries.length, n = state.view.length;
     $('resultCount').textContent = (n === total ? n : n + ' de ' + total) + (total === 1 ? ' consulta' : ' consultas');
     $('btnZipList').classList.toggle('hidden', !n);
-    $('btnClear').classList.toggle('hidden', !hasFilters());
+    $('filterDone').textContent = n ? 'Ver ' + n + (n === 1 ? ' consulta' : ' consultas') : 'Nenhuma consulta';
     updateSelectAll();
   }
 
@@ -480,11 +521,13 @@
 
     var empty = $('emptyState'), none = !state.view.length;
     empty.classList.toggle('hidden', !none);
+    var ec = $('emptyClear');
+    if (ec) ec.classList.toggle('hidden', !(none && state.queries.length && hasFilters()));
     if (none) {
       var hasData = state.queries.length > 0;
       $('emptyTitle').textContent = hasData ? 'Nenhuma consulta encontrada' : (state.loadError ? 'Não foi possível carregar' : 'Nenhuma consulta cadastrada');
       $('emptyText').textContent = hasData
-        ? 'Tente outro termo, ou use "Limpar filtros". Dica: busque por coluna:nome_da_coluna ou pelo ID.'
+        ? 'Tente outro termo ou limpe os filtros.'
         : (state.loadError || (ADMIN ? 'Clique em "Cadastrar" para enviar um JSON, vários arquivos ou um ZIP.' : 'A biblioteca ainda não tem consultas publicadas.'));
     }
   }
@@ -757,7 +800,7 @@
   function clearFilters() {
     state.search = ''; state.cats = {}; state.onlyFav = false; state.review = '';
     $('searchInput').value = '';
-    var rf = $('reviewFilter'); if (rf) rf.value = '';
+    setFilters(false);
     renderChips();
     renderList();
     if (QH.afterRender) QH.afterRender();
@@ -770,7 +813,13 @@
     var onSearch = debounce(function (v) { setSearch(v); }, 140);
     on('searchInput', 'input', function (e) { onSearch(e.target.value); });
     on('sortSelect', 'change', function (e) { state.sort = e.target.value; renderList(); });
-    on('btnClear', 'click', clearFilters);
+    on('emptyClear', 'click', clearFilters);
+
+    // Caixa de filtros
+    on('btnFilters', 'click', function () { setFilters(!filtersOpen()); });
+    on('filterDone', 'click', function () { setFilters(false); });
+    on('filterBackdrop', 'click', function () { setFilters(false); });
+    on('filterClear', 'click', clearChips);
 
     // Chips de categoria (várias ao mesmo tempo)
     on('categoryChips', 'click', function (e) {
@@ -778,12 +827,24 @@
       if (mode) { state.catMode = mode.getAttribute('data-catmode'); renderChips(); renderList(); return; }
       var chip = e.target.closest('[data-chip]');
       if (!chip) return;
-      var kind = chip.getAttribute('data-chip');
-      if (kind === 'all') { state.cats = {}; state.onlyFav = false; }
-      else if (kind === 'fav') state.onlyFav = !state.onlyFav;
+      if (chip.getAttribute('data-chip') === 'fav') state.onlyFav = !state.onlyFav;
       else { var c = chip.getAttribute('data-cat'); if (state.cats[c]) delete state.cats[c]; else state.cats[c] = true; }
       renderChips();
       renderList();
+    });
+
+    // Etiquetas dos filtros ativos: clicar remove
+    on('activeFilters', 'click', function (e) {
+      var b = e.target.closest('[data-remove]');
+      if (!b) return;
+      var key = b.getAttribute('data-remove');
+      if (key === 'all') { clearChips(); return; }
+      if (key === 'fav') state.onlyFav = false;
+      else if (key === 'review') state.review = '';
+      else if (key.indexOf('cat:') === 0) delete state.cats[key.slice(4)];
+      renderChips();
+      renderList();
+      if (QH.afterRender) QH.afterRender();
     });
 
     // Lista: clique no card abre os detalhes; botões e caixas têm ação própria
@@ -901,6 +962,7 @@
         if (e.key === 'ArrowLeft') { e.preventDefault(); stepDrawer(-1); }
         if (e.key === 'ArrowRight') { e.preventDefault(); stepDrawer(1); }
       }
+      if (e.key === 'Escape' && filtersOpen()) { setFilters(false); return; }
       if (e.key === 'Escape' && state.openId && !modalOpen) closeDrawer();
     });
   }
@@ -941,6 +1003,7 @@
     renderBulk();
     updateSelectAll();
   };
+  QH.clearChips = clearChips;
   QH.setSearch = function (v) { $('searchInput').value = v; setSearch(v); };
   QH.finishLoad = finishLoad;
 
