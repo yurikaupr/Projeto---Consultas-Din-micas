@@ -7,7 +7,7 @@
   color-scheme: light;
 
   /* Marca Magazord */
-  --qh-build: "3.2.0";   /* versão do visual (conferida pelo script) */
+  --qh-build: "3.3.0";   /* versão do visual (conferida pelo script) */
   --blue-500: #2754d7; --blue-700: #173b9d;
   --red-500: #ee6757;
   --yellow-500: #f4dc55;
@@ -766,4 +766,60 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
   .filter-backdrop.is-open { background: var(--overlay); animation: fade-in 0.2s ease both; }
   .review { flex-wrap: wrap; gap: 8px; }
   .review__bar { order: 3; flex-basis: 100%; }
+}
+
+/* ---------- Acessos e permissões ---------- */
+.acc-section { margin-bottom: 20px; }
+.acc-title { margin-bottom: 10px; font-size: 13px; }
+.acc-count { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.acc-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acc-note { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.acc-note--warn { padding: 8px 10px; border-left: 3px solid var(--yellow-500); border-radius: 4px; background: var(--warn-tint); color: var(--text); }
+.acc-head-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.acc-head-row .acc-title { margin-bottom: 0; }
+.acc-legend { margin: 6px 0 10px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.acc-legend b { color: var(--text-2); }
+
+.acc-list { max-height: 34vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.acc-row {
+  display: grid; grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1.6fr) 150px minmax(0, 1fr) 40px; gap: 10px; align-items: center;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+}
+.acc-row:last-child { border-bottom: 0; }
+.acc-row--owner { background: var(--surface-2); }
+.acc-name { width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 13px; }
+.acc-name::placeholder { color: var(--muted); opacity: 1; }
+.acc-name--static { border: 0; background: none; color: var(--muted); display: flex; align-items: center; }
+.acc-email { font-size: 13px; overflow-wrap: anywhere; }
+.acc-meta { font-size: 11px; color: var(--muted); }
+.acc-tag { margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--accent-tint); color: var(--accent-text); font-size: 10px; font-weight: 700; }
+.acc-role { height: 36px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; }
+.acc-role--static { display: inline-flex; align-items: center; }
+.acc-role--admin { border-color: var(--accent-line); background: var(--accent-tint); color: var(--accent-text); }
+.acc-role--blocked { border-color: var(--danger-line); background: var(--danger-tint); color: var(--danger-text); }
+.acc-del { width: 36px; height: 36px; font-size: 18px; color: var(--danger-text); }
+.acc-del:disabled, .acc-role:disabled { opacity: 0.45; cursor: not-allowed; }
+.acc-empty { padding: 18px; text-align: center; }
+
+.acc-addbox { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.acc-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 160px auto; gap: 10px; }
+.acc-add input, .acc-add select { height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 13px; }
+.acc-add input::placeholder { color: var(--muted); opacity: 1; }
+.acc-addbox .modal__error { min-height: 0; margin-top: 6px; }
+.acc-status { font-size: 12px; color: var(--muted); }
+.acc-status.is-dirty { color: var(--warn-text); font-weight: 700; }
+
+@media (max-width: 720px) {
+  .acc-modes { grid-template-columns: 1fr; }
+  .acc-row { grid-template-columns: 1fr 44px; grid-template-areas: "name del" "email email" "role role" "meta meta"; gap: 6px 10px; padding: 12px; }
+  .acc-row > .acc-name { grid-area: name; }
+  .acc-row > .acc-del { grid-area: del; width: 44px; height: 44px; }
+  .acc-row > .acc-email { grid-area: email; }
+  .acc-row > .acc-role { grid-area: role; height: 44px; }
+  .acc-row > .acc-meta { grid-area: meta; }
+  .acc-row--owner { grid-template-areas: "email email" "role role" "meta meta"; }
+  .acc-row--owner > .acc-name { display: none; }
+  .acc-add { grid-template-columns: 1fr; }
+  .acc-add input, .acc-add select { height: 44px; }
+  .acc-list { max-height: 40vh; }
 }
