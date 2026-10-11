@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-build="3.3.0">
+<html lang="pt-BR" data-build="3.4.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="js/theme.js?v=3.3.0"></script>
+  <script src="js/theme.js?v=3.4.0"></script>
   <style>/* proteção: mesmo com um CSS antigo, o fundo não escurece e os ícones não explodem */.overlay{opacity:0;visibility:hidden}.overlay.is-open{opacity:1;visibility:visible}.theme-btn .ico{display:none;width:18px;height:18px}:root[data-theme-mode=auto] .theme-btn .ico-auto,:root[data-theme-mode=light] .theme-btn .ico-light,:root[data-theme-mode=dark] .theme-btn .ico-dark{display:block}</style>
-  <link rel="stylesheet" href="css/style.css?v=3.3.0">
+  <link rel="stylesheet" href="css/style.css?v=3.4.0">
 </head>
 <body data-mode="admin">
 
@@ -33,7 +33,7 @@
           <span class="user__email" id="userEmail"></span>
           <button type="button" class="link-btn" id="btnLogout">Sair</button>
         </span>
-        <button type="button" class="btn hidden" id="btnReport" title="Abre o relatório da última importação">Relatório <span class="count-badge hidden" id="reportBadge"></span></button>
+        <button type="button" class="btn hidden" id="btnReport" title="Erros e avisos da importação que ainda precisam de atenção">Relatório <span class="count-badge hidden" id="reportBadge"></span></button>
         <button type="button" class="btn btn--primary" id="btnImport">+<span class="hide-sm">&nbsp;Cadastrar</span></button>
         <div class="menu" id="moreMenu">
           <button type="button" class="icon-btn" id="btnMore" aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções">⋯</button>
@@ -136,7 +136,7 @@
     </div>
   </main>
 
-  <footer class="site-footer">QueryHub v3.3.0</footer>
+  <footer class="site-footer">QueryHub v3.4.0</footer>
 
   <!-- ========== Barra de seleção ========== -->
   <div class="bulk hidden" id="bulkBar">
@@ -350,13 +350,15 @@
   <dialog class="modal modal--xl" id="reportModal">
     <div class="modal__head">
       <div>
-        <h2 class="modal__title">Relatório de importação</h2>
+        <h2 class="modal__title">Pendências da importação</h2>
         <p class="modal__sub" id="reportSub"></p>
       </div>
       <button type="button" class="icon-btn" data-close="reportModal" aria-label="Fechar">×</button>
     </div>
 
     <div class="rsummary" id="reportSummary"></div>
+
+    <p class="report-intro" id="reportIntro"></p>
 
     <div class="rbar">
       <div class="rtabs" role="tablist">
@@ -371,9 +373,10 @@
 
     <div class="modal__foot rfoot">
       <div class="modal__foot-actions">
-        <button type="button" class="btn btn--sm" id="reportCsv">Baixar relatório (CSV)</button>
+        <button type="button" class="btn btn--sm" id="reportCsv">Baixar lista (CSV)</button>
         <button type="button" class="btn btn--sm" id="reportCopy">Copiar resumo dos erros</button>
         <button type="button" class="btn btn--sm" id="reportGuide">Guia de mensagens</button>
+        <button type="button" class="btn btn--sm btn--danger" id="reportClear">Limpar pendências</button>
       </div>
       <div class="modal__foot-actions">
         <button type="button" class="btn btn--sm" id="reportMore">Enviar arquivos corrigidos</button>
@@ -520,8 +523,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" class="toast__action hidden" id="toastAction"></button></div>
   <button type="button" class="to-top" id="toTop" aria-label="Voltar ao topo">↑</button>
 
-  <script src="js/app.js?v=3.3.0" defer></script>
-  <script src="js/admin.js?v=3.3.0" defer></script>
-  <script src="js/access.js?v=3.3.0" defer></script>
+  <script src="js/app.js?v=3.4.0" defer></script>
+  <script src="js/admin.js?v=3.4.0" defer></script>
+  <script src="js/access.js?v=3.4.0" defer></script>
 </body>
 </html>
