@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-build="3.1.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,8 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="js/theme.js"></script>
-  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js?v=3.1.0"></script>
+  <style>/* proteção: mesmo com um CSS antigo, o fundo não escurece e os ícones não explodem */.overlay{opacity:0;visibility:hidden}.overlay.is-open{opacity:1;visibility:visible}.theme-btn .ico{display:none;width:18px;height:18px}:root[data-theme-mode=auto] .theme-btn .ico-auto,:root[data-theme-mode=light] .theme-btn .ico-light,:root[data-theme-mode=dark] .theme-btn .ico-dark{display:block}</style>
+  <link rel="stylesheet" href="css/style.css?v=3.1.0">
 </head>
 <body data-mode="viewer">
 
@@ -96,6 +97,8 @@
       <p class="empty__text" id="emptyText"></p>
     </div>
   </main>
+
+  <footer class="site-footer">QueryHub v3.1.0</footer>
 
   <!-- ========== Barra de seleção ========== -->
   <div class="bulk hidden" id="bulkBar">
@@ -214,6 +217,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" class="toast__action hidden" id="toastAction"></button></div>
   <button type="button" class="to-top" id="toTop" aria-label="Voltar ao topo">↑</button>
 
-  <script src="js/app.js" defer></script>
+  <script src="js/app.js?v=3.1.0" defer></script>
 </body>
 </html>
