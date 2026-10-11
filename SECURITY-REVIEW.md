@@ -201,3 +201,48 @@ contas corporativas no admin**.
 - Ligar Vercel Firewall + Rate Limiting (resposta ao DDoS/força bruta).
 - Manter 2FA em Google Cloud, Vercel e GitHub (já feito).
 - Rotacionar `GITHUB_TOKEN` e `SESSION_SECRET` periodicamente.
+
+---
+
+## 6. Atualização: dois níveis de admin + endurecimento (commit atual)
+
+### 6.1 Perfis (RBAC)
+Agora há quatro perfis, conferidos **no servidor a cada requisição**:
+
+| Perfil | Site | Painel | Publica | Usuários | Logs |
+|---|:--:|:--:|:--:|:--:|:--:|
+| **master** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **admin** | ✓ | ✓ | ✓ | — | — |
+| **viewer** | ✓ | — | — | — | — |
+| **blocked** | — | — | — | — | — |
+
+- **master** ("master master"): tudo, inclusive gerenciar quem entra e ler os logs.
+- **admin** ("sobe consulta"): painel + publicar; **sem** acesso a usuários ou logs.
+- `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` são masters (recomenda-se `ADMIN_EMAILS`, que são owners imutáveis).
+
+### 6.2 Como a separação é garantida (defesa em camadas)
+1. `middleware.js` (Edge): `/admin.html` e `/api/admin/publish` exigem master **ou** admin; `/api/admin/access` e `/api/admin/logs` exigem **master** (`isMasterPath` + `isMaster`).
+2. Cada rota reconfere: `requireAdmin` (painel) em `publish`/`status`; `requireMaster` em `access`/`logs`.
+3. O cliente só **esconde** botões por capacidade (`/api/me`); quem forjar o DOM/console ainda bate na checagem do servidor.
+4. O perfil vem sempre da lista no servidor — **nunca** do cookie/JWT.
+
+### 6.3 Garantia do domínio (a "certeza" pedida)
+- Login: só passa com `email_verified`, `hd` == domínio **e** e-mail terminando em `@magazord.com.br` (ou quem estiver explicitamente na lista). Qualquer outra conta Google é recusada.
+- **Endurecimento novo:** `canStay` passou a **reconferir o domínio/lista a cada requisição**. Antes, no modo "empresa", uma sessão sobrevivia mesmo após a pessoa sair da lista; agora um parceiro externo removido perde o acesso em ~45s.
+- Painel **Segurança e acesso** (`/api/admin/status`) mostra, para qualquer admin, a regra vigente, o domínio, quem é master/admin e as garantias ativas — é o lugar para ter a certeza.
+
+### 6.4 Logs de acesso (somente master)
+- Eventos: `login_ok`, `login_denied`, `publish_ok`, `access_updated`. Nunca token nem conteúdo de consulta; guardam e-mail, perfil, detalhe, IP e horário.
+- Gravados em `data/audit-log.json` numa **branch separada** (`GITHUB_AUDIT_BRANCH`, padrão `queryhub-audit`) para **não** disparar redeploy a cada evento. Limitado a 500 entradas. Desligável com `ACCESS_LOG=off`.
+
+### 6.5 Prova automatizada
+`node test/access.test.mjs` — **57 verificações** da matriz de acesso (quem é master, quem é admin, quem entra, domínio falso/hd falso/não verificado negados, modo lista, falha fechada e a separação master × admin nas rotas). Todas passam.
+
+### 6.6 Teste ao vivo após deploy
+Depois do deploy, confirme a separação (com a sessão de um **admin** que não seja master):
+```bash
+# admin logado: deve publicar, mas ser barrado em usuários e logs
+curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/access   # espere 403
+curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/logs     # espere 403
+curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/status   # espere 200
+```

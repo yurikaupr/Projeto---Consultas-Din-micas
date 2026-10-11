@@ -4,9 +4,23 @@ Biblioteca de consultas dinâmicas do time de Sucesso do Cliente · Magazord.
 
 ## Como funciona
 - **Time** (`index.html`): entra com Google (`@magazord.com.br`), pesquisa, vê colunas e filtros, baixa os JSONs e pede ajustes por e-mail. Somente leitura.
-- **Admin** (`admin.html`): só e-mails em `ADMIN_EMAILS`. Cadastra, revisa e organiza as consultas e publica.
+- **Painel** (`admin.html`): só para quem é **master** ou **admin**. Cadastra, revisa, organiza e publica consultas.
 - **Publicar** grava `data/queries.json` no GitHub (um commit por publicação). A Vercel faz o deploy sozinha e o time vê a mudança em ~1 minuto.
 - Cada consulta tem um **ID** (#001, #002…), usado na busca, nos links diretos e nos pedidos de ajuste.
+
+## Perfis de acesso
+| Perfil | Entra no site | Abre o painel | Publica consultas | Gerencia usuários | Vê logs |
+|---|:--:|:--:|:--:|:--:|:--:|
+| **master** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **admin** | ✓ | ✓ | ✓ | — | — |
+| **viewer** (consulta) | ✓ | — | — | — | — |
+| **blocked** | — | — | — | — | — |
+
+- **master** = "master master": faz tudo, inclusive gerenciar quem entra e ler os logs de acesso.
+- **admin** = "sobe consulta": usa o painel e publica, mas **não** mexe em usuários nem vê logs.
+- Os e-mails em `ADMIN_EMAILS` (Vercel) são **masters fixos** (owners): imutáveis, nunca perdem o acesso. É o lugar recomendado para definir `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` como masters. Masters adicionais podem ser definidos no painel (perfil "Master").
+- No painel, **Segurança e acesso** (qualquer admin) mostra a regra vigente — por padrão "somente contas @magazord.com.br" — e quem tem acesso elevado. **Usuários e permissões** e **Logs de acesso** só aparecem para master.
+- O servidor **reconfere o perfil e o domínio a cada requisição** (não confia no cookie): mudar a lista vale em até ~1 minuto, inclusive para quem já está logado.
 
 ## Estrutura
 ```
@@ -16,12 +30,21 @@ css/style.css               Estilos e temas claro/escuro (paleta Magazord)
 css/login.css               Estilos do login e da política
 js/theme.js                 Tema claro/escuro (carrega antes da página)
 js/app.js                   Núcleo: lista, busca, painel de detalhes, pedido de ajuste
-js/admin.js                 Só no admin: importação, relatório, edição, desfazer, publicação
+js/admin.js                 Só no admin: importação, relatório, edição, publicação, Segurança e Logs
+js/access.js                Só no admin: gerência de usuários/acessos (master)
 js/login.js                 Login com Google
 js/vendor/jszip.min.js      Carregado só quando precisa gerar ou ler ZIP
-api/                        Login, sessão e publicação (servidor)
-middleware.js               Bloqueia o site sem sessão e o /admin sem perfil de admin
+api/_access.js              Regras de perfil (master/admin/viewer/blocked) e logs
+api/_session.js             Sessão, requireAdmin (painel) e requireMaster
+api/me.js                   Perfil + capacidades do usuário logado
+api/admin/publish.js        Publica consultas (master ou admin)
+api/admin/access.js         Gerência de usuários (somente master)
+api/admin/status.js         Resumo da política de acesso (painel de Segurança)
+api/admin/logs.js           Logs de acesso (somente master)
+middleware.js               Exige sessão; /admin exige painel; usuários/logs exigem master
 data/queries.json           Biblioteca publicada
+data/access.json            Lista de acessos (editada pelo master)
+test/access.test.mjs        Testes da matriz de acesso (node)
 vercel.json                 Cabeçalhos de segurança e cache
 ```
 
@@ -45,20 +68,26 @@ vercel.json                 Cabeçalhos de segurança e cache
 | `GOOGLE_CLIENT_ID` | ID do cliente OAuth do Google |
 | `SESSION_SECRET` | texto aleatório com 32+ caracteres |
 | `ALLOWED_DOMAIN` | `magazord.com.br` (opcional, é o padrão) |
-| `ADMIN_EMAILS` | e-mails dos administradores, separados por vírgula |
+| `ADMIN_EMAILS` | **masters fixos** (owners), separados por vírgula. Ex.: `yuri.klug@magazord.com.br,yurikaupr@gmail.com`. Imutáveis pelo painel. |
 | `GITHUB_TOKEN` | token do GitHub com permissão em Contents (leitura e escrita) |
 | `GITHUB_REPO` | `usuario/nome-do-repositorio` |
-| `GITHUB_BRANCH` | `main` (opcional) |
+| `GITHUB_BRANCH` | branch de produção, `main` (opcional) |
+| `GITHUB_AUDIT_BRANCH` | opcional: branch onde os **logs** são gravados (padrão `queryhub-audit`). Mantenha-a **diferente** da branch de produção para que registrar logs **não** dispare um redeploy. É criada sozinha na primeira vez. |
+| `ACCESS_LOG` | opcional: `off` desliga o registro de logs (padrão: ligado quando o GitHub está configurado) |
 | `SESSION_HOURS` | duração do login em horas, de 1 a 24 (padrão 8) |
-| `ALLOWED_EMAILS` | opcional: se preenchida, só estes e-mails (e os admins) entram |
+| `ALLOWED_EMAILS` | opcional: se preenchida, só estes e-mails (e os masters) entram — força o modo "somente lista" |
 | `BLOCKED_EMAILS` | opcional: e-mails bloqueados na hora, mesmo com login aberto |
 | `EXTRA_ALLOWED_EMAILS` | opcional: e-mails extras só para consulta |
 
 Depois de criar ou alterar variáveis, faça **Redeploy**.
 
+> **Masters:** defina `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` em `ADMIN_EMAILS` (forma recomendada, imutável). Eles já constam como `master` em `data/access.json` para funcionar desde já; se os colocar em `ADMIN_EMAILS`, **remova-os da lista do painel** para não duplicar (o painel recusa editar um owner com a mensagem "master fixo").
+
 ## Segurança (resumo)
 - Todo arquivo e rota exige sessão, exceto a tela de login, a política de privacidade, o tema e o CSS do login.
-- O domínio é validado no servidor. O painel admin e a publicação exigem o e-mail em `ADMIN_EMAILS`, conferido a cada requisição.
-- Cookie `__Host-` com HttpOnly, Secure e SameSite=Lax. Rotas de escrita também conferem a origem.
-- CSP restritiva, HSTS, X-Frame-Options, nosniff e sem referrer. Nenhum segredo no navegador.
-- Para revogar: `BLOCKED_EMAILS` (uma pessoa) ou troque o `SESSION_SECRET` (todos).
+- O domínio é validado no servidor **a cada requisição** (login confere `hd` + e-mail; o acesso contínuo reconfere o domínio/lista). O painel exige master ou admin; **usuários e logs exigem master** — tudo conferido no servidor, nunca pelo cookie.
+- Cookie `__Host-` com HttpOnly, Secure e SameSite=Lax. Rotas de escrita também conferem a origem (`Origin`/`Sec-Fetch-Site`).
+- CSP restritiva, HSTS (`includeSubDomains`/`preload`), COOP, X-Frame-Options, nosniff e sem referrer. `/data/*` com `no-store`. Nenhum segredo no navegador.
+- **Logs de acesso** (login, login negado, publicação, mudança de acessos) ficam em `data/audit-log.json` numa branch separada; só master vê. Nunca guardam token nem conteúdo de consulta.
+- Para revogar: `BLOCKED_EMAILS` ou o perfil "Bloqueado" (uma pessoa), ou troque o `SESSION_SECRET` (todos).
+- Testes da matriz de acesso: `node test/access.test.mjs`.

@@ -187,12 +187,14 @@
       return res.ok ? res.json() : null;
     }).then(function (user) {
       if (!user) return;
-      if (ADMIN && user.role !== 'admin') { window.location.replace('/'); return; }
+      // Painel exige master OU admin (canPanel). Quem não tem volta para o time.
+      if (ADMIN && !user.canPanel) { window.location.replace('/'); return; }
       state.user = user;
       $('userEmail').textContent = user.email;
       $('userBox').classList.remove('hidden');
       var adminLink = $('adminLink');
-      if (adminLink && user.role === 'admin') adminLink.classList.remove('hidden');
+      if (adminLink && user.canPanel) adminLink.classList.remove('hidden');
+      if (QH.hooks.user) QH.hooks.user(user);
     }).catch(function () { /* sem /api (ex.: Live Server): segue sem mostrar o usuário */ });
   }
 

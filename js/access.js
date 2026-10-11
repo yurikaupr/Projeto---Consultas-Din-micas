@@ -13,7 +13,8 @@
   var $ = QH.$, on = QH.on, esc = QH.esc, normalize = QH.normalize, toast = QH.toast;
   var openModal = QH.openModal, closeModal = QH.closeModal;
 
-  var ROLE_LABEL = { admin: 'Administrador', viewer: 'Consulta', blocked: 'Bloqueado' };
+  var ROLE_LABEL = { master: 'Master', admin: 'Admin', viewer: 'Consulta', blocked: 'Bloqueado' };
+  var ROLE_ORDER = ['master', 'admin', 'viewer', 'blocked'];
   var EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 
   var ERRORS = {
@@ -25,12 +26,14 @@
     invalid_email: 'Há um e-mail inválido na lista.',
     duplicate_email: 'Há um e-mail repetido na lista.',
     invalid_role: 'Há uma permissão inválida na lista.',
-    owner_protected: 'Esse e-mail é administrador fixo (definido na Vercel) e não pode ser alterado aqui.',
-    self_demote: 'Você não pode tirar o seu próprio acesso de administrador. Peça a outro administrador.',
-    no_admin: 'É preciso ter pelo menos um administrador.',
+    owner_protected: 'Esse e-mail é master fixo (definido na Vercel) e não pode ser alterado aqui.',
+    self_demote: 'Você não pode tirar o seu próprio acesso de master. Peça a outro master.',
+    no_admin: 'É preciso ter pelo menos um master.',
+    no_master: 'É preciso ter pelo menos um master.',
     too_many: 'A lista tem pessoas demais (o limite é 300).',
     bad_origin: 'Requisição recusada por segurança. Recarregue a página e tente de novo.',
-    forbidden: 'Seu usuário não é administrador.'
+    forbidden: 'Seu usuário não é administrador.',
+    forbidden_master: 'Só um master pode gerenciar usuários e ver os logs.'
   };
 
   var acc = null;       // o que veio do servidor
@@ -73,9 +76,15 @@
 
   /* ---------- Desenho ---------- */
   function counts() {
-    var a = acc.owners.length, v = 0, b = 0;
-    model.users.forEach(function (u) { if (u.role === 'admin') a++; else if (u.role === 'viewer') v++; else b++; });
-    return { admins: a, viewers: v, blocked: b };
+    // owners (Vercel) são masters fixos; entram na contagem de masters
+    var m = acc.owners.length, a = 0, v = 0, b = 0;
+    model.users.forEach(function (u) {
+      if (u.role === 'master') m++;
+      else if (u.role === 'admin') a++;
+      else if (u.role === 'viewer') v++;
+      else b++;
+    });
+    return { masters: m, admins: a, viewers: v, blocked: b };
   }
 
   function renderMode() {
@@ -101,7 +110,7 @@
       '<input type="text" class="acc-name" data-i="' + i + '" value="' + esc(u.name) + '" maxlength="80" placeholder="Nome" aria-label="Nome de ' + esc(u.email) + '">' +
       '<span class="acc-email">' + esc(u.email) + (self ? ' <span class="acc-tag">você</span>' : '') + '</span>' +
       '<select class="acc-role acc-role--' + u.role + '" data-i="' + i + '" aria-label="Permissão de ' + esc(u.email) + '"' + (self ? ' disabled' : '') + tip + '>' +
-        ['admin', 'viewer', 'blocked'].map(function (r) { return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + ROLE_LABEL[r] + '</option>'; }).join('') +
+        ROLE_ORDER.map(function (r) { return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + ROLE_LABEL[r] + '</option>'; }).join('') +
       '</select>' +
       '<span class="acc-meta">' + meta + '</span>' +
       '<button type="button" class="icon-btn acc-del" data-i="' + i + '" aria-label="Remover ' + esc(u.email) + '"' + (self ? ' disabled' : '') + tip + '>×</button>' +
@@ -134,7 +143,7 @@
     status.classList.toggle('is-dirty', dirty);
     status.textContent = !acc.canSave ? 'O GitHub não está configurado: só leitura.' : (dirty ? 'Alterações não salvas' : 'Tudo salvo');
     var c = counts();
-    $('accSummary').textContent = c.admins + (c.admins === 1 ? ' administrador' : ' administradores') + ' · ' + c.viewers + ' de consulta · ' + c.blocked + (c.blocked === 1 ? ' bloqueado' : ' bloqueados');
+    $('accSummary').textContent = c.masters + (c.masters === 1 ? ' master' : ' masters') + ' · ' + c.admins + (c.admins === 1 ? ' admin' : ' admins') + ' · ' + c.viewers + ' de consulta · ' + c.blocked + (c.blocked === 1 ? ' bloqueado' : ' bloqueados');
   }
 
   function render() {

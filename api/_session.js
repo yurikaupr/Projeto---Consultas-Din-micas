@@ -1,6 +1,6 @@
 // Utilitários de sessão compartilhados pelas rotas /api (arquivos com "_" não viram rotas)
 import { SignJWT, jwtVerify } from 'jose';
-import { canStay, isAdminEmail, listFromEnv, loadAccess } from './_access.js';
+import { canStay, isAdminEmail, isMaster, listFromEnv, loadAccess } from './_access.js';
 
 export { listFromEnv };
 
@@ -63,8 +63,9 @@ export async function readSession(req) {
   }
 }
 
-// Exige administrador. O papel vem da lista de acessos atual (variável da Vercel + painel),
-// e não do cookie: mudar a lista vale mesmo para quem já está com a sessão aberta.
+// Exige acesso ao PAINEL (master OU admin): entra no painel e publica consultas.
+// O papel vem da lista de acessos atual (variável da Vercel + painel), e não do
+// cookie: mudar a lista vale mesmo para quem já está com a sessão aberta.
 export async function requireAdmin(req, res) {
   const session = await readSession(req);
   if (!session) { res.status(401).json({ error: 'unauthorized' }); return null; }
@@ -72,6 +73,17 @@ export async function requireAdmin(req, res) {
   const cfg = await loadAccess();
   if (cfg.unavailable && !cfg.owners.has(email)) { res.status(503).json({ error: 'access_unavailable' }); return null; }
   if (!canStay(cfg, email) || !isAdminEmail(cfg, email)) { res.status(403).json({ error: 'forbidden' }); return null; }
+  return session;
+}
+
+// Exige MASTER: gerenciar usuários/acessos e ver os logs. Admin comum não passa.
+export async function requireMaster(req, res) {
+  const session = await readSession(req);
+  if (!session) { res.status(401).json({ error: 'unauthorized' }); return null; }
+  const email = String(session.email).toLowerCase();
+  const cfg = await loadAccess();
+  if (cfg.unavailable && !cfg.owners.has(email)) { res.status(503).json({ error: 'access_unavailable' }); return null; }
+  if (!canStay(cfg, email) || !isMaster(cfg, email)) { res.status(403).json({ error: 'forbidden_master' }); return null; }
   return session;
 }
 

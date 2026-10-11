@@ -1,7 +1,12 @@
 // Valida o token do Google NO SERVIDOR e só então cria a sessão.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { audit, createSession, isConfigured, sameOrigin, sessionCookie } from './_session.js';
-import { decideLogin, loadAccess } from './_access.js';
+import { appendAudit, decideLogin, loadAccess } from './_access.js';
+
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  return (Array.isArray(fwd) ? fwd[0] : String(fwd || '')).split(',')[0].trim();
+}
 
 const GOOGLE_KEYS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
@@ -35,14 +40,16 @@ export default async function handler(req, res) {
 
   if (!decision.allowed) {
     audit('login_denied', { email: email, reason: decision.reason });
+    await appendAudit({ ts: new Date().toISOString(), event: 'login_denied', email: email, role: null, detail: decision.reason, ip: clientIp(req) });
     if (decision.reason === 'unavailable') return res.status(503).json({ error: 'access_unavailable' });
     return res.status(403).json({ error: 'domain_not_allowed' });
   }
 
-  // 3) Cria a sessão (cookie assinado, HttpOnly)
-  const role = decision.admin ? 'admin' : 'viewer';
+  // 3) Cria a sessão (cookie assinado, HttpOnly). O papel é master | admin | viewer.
+  const role = decision.role || (decision.admin ? 'admin' : 'viewer');
   const token = await createSession({ email: email, name: payload.name, role: role });
   res.setHeader('Set-Cookie', sessionCookie(token));
   audit('login_ok', { email: email, role: role });
+  await appendAudit({ ts: new Date().toISOString(), event: 'login_ok', email: email, role: role, detail: 'entrou', ip: clientIp(req) });
   return res.status(200).json({ ok: true, email: email, role: role });
 }
