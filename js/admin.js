@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('admin', '3.3.0');
+  if (window.QHBuild) window.QHBuild.report('admin', '3.4.0');
 
   var QH = window.QH;
   if (!QH || !QH.ADMIN) return;
@@ -67,74 +67,74 @@
 
   var ISSUES = {
     /* ----- Arquivo ----- */
-    ARQ_VAZIO:    { g: 'Arquivo', sev: 'erro', title: 'Arquivo vazio', meaning: 'O arquivo não tem conteúdo (ou só tem espaços e quebras de linha).', hint: 'Exporte a consulta novamente na plataforma. O arquivo foi salvo sem dados.' },
-    ARQ_GRANDE:   { g: 'Arquivo', sev: 'erro', title: 'Arquivo grande demais', meaning: 'O arquivo passa do limite de 8 MB.', hint: 'Uma consulta dinâmica normal tem poucos KB. Confira se não é o arquivo errado (backup, exportação de dados ou dump).' },
-    ARQ_LEITURA:  { g: 'Arquivo', sev: 'erro', title: 'Não foi possível ler o arquivo', meaning: 'O navegador falhou ao abrir o arquivo.', hint: 'Selecione o arquivo de novo. Se estiver em pasta sincronizada (OneDrive, Google Drive), copie para o computador antes.' },
-    ARQ_ENCODING: { g: 'Arquivo', sev: 'aviso', title: 'Caracteres corrompidos (codificação)', meaning: 'O texto tem o caractere � (acentos que se perderam na gravação do arquivo).', hint: 'Reexporte ou salve o arquivo como UTF-8. A consulta foi importada, mas nomes e comentários podem estar com acentos errados.' },
-    ARQ_PESADO:   { g: 'Arquivo', sev: 'aviso', title: 'Arquivo pesado', meaning: 'O arquivo tem mais de 1 MB.', hint: 'Isso é incomum para uma consulta. A importação funcionou, mas confira se o conteúdo é o esperado.' },
-    ARQ_IGNORADO: { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo ignorado (não é .json)', meaning: 'Só arquivos .json e .zip são lidos.', hint: 'Nenhuma ação necessária, a menos que este arquivo devesse ser uma consulta. Nesse caso, exporte em .json.' },
-    ARQ_SISTEMA:  { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo de sistema ignorado', meaning: 'Arquivos como .DS_Store, Thumbs.db, desktop.ini e a pasta __MACOSX são criados pelo computador, não são consultas.', hint: 'Nenhuma ação necessária.' },
+    ARQ_VAZIO:    { g: 'Arquivo', sev: 'erro', title: 'O arquivo está vazio', meaning: 'Não há nada dentro do arquivo. Ele foi salvo sem conteúdo.', hint: 'Exporte a consulta de novo pela plataforma e envie o arquivo novo. Se o arquivo veio de e-mail ou de chat, peça para a pessoa reenviar.' },
+    ARQ_GRANDE:   { g: 'Arquivo', sev: 'erro', title: 'O arquivo é grande demais', meaning: 'O arquivo passa de 8 MB. Uma consulta normal tem poucos KB, então provavelmente não é o arquivo certo (pode ser um backup ou uma planilha de dados).', hint: 'Confira se escolheu o arquivo certo e envie só os arquivos de consulta.' },
+    ARQ_LEITURA:  { g: 'Arquivo', sev: 'erro', title: 'Não consegui abrir o arquivo', meaning: 'O navegador não conseguiu ler o arquivo. Isso acontece, por exemplo, quando ele está numa pasta sincronizada (OneDrive, Google Drive) e ainda não foi baixado para o computador.', hint: 'Copie o arquivo para uma pasta do seu computador (como Documentos) e envie de novo.' },
+    ARQ_ENCODING: { g: 'Arquivo', sev: 'aviso', title: 'Alguns acentos ficaram trocados por �', meaning: 'O arquivo foi salvo de um jeito que perdeu alguns acentos. A consulta foi importada, mas nomes e comentários podem aparecer com letras erradas.', hint: 'Abra a consulta e confira o nome. Se estiver estranho, corrija no editor ou exporte de novo pela plataforma.' },
+    ARQ_PESADO:   { g: 'Arquivo', sev: 'aviso', title: 'O arquivo é maior que o normal', meaning: 'O arquivo passa de 1 MB. Ele foi importado, mas isso é incomum para uma consulta.', hint: 'Confira se é essa consulta mesmo. Se estiver tudo certo, pode ignorar este aviso.' },
+    ARQ_IGNORADO: { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo que não é uma consulta (pulado)', meaning: 'Só leio arquivos .json e .zip. Este foi pulado e não atrapalha nada.', hint: 'Nada a fazer. Se ele deveria ser uma consulta, exporte-a em formato .json e envie de novo.' },
+    ARQ_SISTEMA:  { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo automático do computador (pulado)', meaning: 'O Mac e o Windows criam sozinhos arquivos como .DS_Store, Thumbs.db e a pasta __MACOSX. Não são consultas.', hint: 'Nada a fazer.' },
 
     /* ----- ZIP ----- */
-    ZIP_INVALIDO:   { g: 'ZIP', sev: 'erro', title: 'ZIP inválido ou corrompido', meaning: 'O arquivo .zip não pôde ser aberto.', hint: 'O download pode ter sido interrompido. Baixe ou compacte de novo. Se possível, extraia o ZIP no computador e envie os .json.' },
-    ZIP_PROTEGIDO:  { g: 'ZIP', sev: 'erro', title: 'ZIP protegido por senha', meaning: 'O .zip está criptografado e não pode ser lido pelo navegador.', hint: 'Extraia o ZIP com a senha e compacte de novo sem senha, ou envie os .json soltos.' },
-    ZIP_SEM_JSON:   { g: 'ZIP', sev: 'erro', title: 'ZIP sem nenhum arquivo .json', meaning: 'O .zip abriu, mas não tem arquivos .json dentro.', hint: 'Confira se compactou o conteúdo certo. Os arquivos precisam terminar em .json.' },
-    ZIP_ANINHADO:   { g: 'ZIP', sev: 'ignorado', title: 'ZIP dentro de ZIP ignorado', meaning: 'Há um .zip dentro do .zip. Os ZIPs internos não são abertos.', hint: 'Extraia o ZIP interno e envie os .json dele separadamente.' },
+    ZIP_INVALIDO:   { g: 'ZIP', sev: 'erro', title: 'Não consegui abrir o ZIP', meaning: 'O arquivo .zip está corrompido, incompleto ou não é um ZIP de verdade. Costuma acontecer quando o download é interrompido.', hint: 'Baixe ou compacte de novo. Se puder, extraia o ZIP no computador e envie os arquivos .json de dentro.' },
+    ZIP_PROTEGIDO:  { g: 'ZIP', sev: 'erro', title: 'O ZIP tem senha', meaning: 'O navegador não consegue abrir ZIPs protegidos por senha.', hint: 'Extraia o ZIP usando a senha, compacte de novo sem senha e envie o novo ZIP.' },
+    ZIP_SEM_JSON:   { g: 'ZIP', sev: 'erro', title: 'O ZIP não tem consultas dentro', meaning: 'Consegui abrir o ZIP, mas não encontrei nenhum arquivo de consulta (.json) nele.', hint: 'Confira se compactou os arquivos certos. Os arquivos de consulta terminam em .json.' },
+    ZIP_ANINHADO:   { g: 'ZIP', sev: 'ignorado', title: 'ZIP dentro de outro ZIP (pulado)', meaning: 'Há um ZIP dentro do ZIP e eu não abro o de dentro.', hint: 'Extraia o ZIP de dentro e envie os arquivos de consulta dele.' },
 
-    /* ----- JSON (sintaxe) ----- */
-    JSON_TRUNCADO:        { g: 'JSON', sev: 'erro', title: 'JSON cortado (arquivo incompleto)', meaning: 'O arquivo termina no meio do conteúdo.', hint: 'Provavelmente o download ou a cópia foi interrompido. Exporte a consulta de novo.' },
-    JSON_VIRGULA:         { g: 'JSON', sev: 'erro', title: 'JSON com vírgula sobrando', meaning: 'Há uma vírgula antes de um } ou ] de fechamento.', hint: 'Remova a vírgula indicada. JSON não aceita vírgula depois do último item.' },
-    JSON_ASPAS:           { g: 'JSON', sev: 'erro', title: 'JSON com aspas simples', meaning: 'O texto usa aspas simples (\') em vez de aspas duplas (").', hint: 'JSON exige aspas duplas em textos e nomes de campos. Reexporte da plataforma em vez de editar à mão.' },
-    JSON_CHAVE_SEM_ASPAS: { g: 'JSON', sev: 'erro', title: 'JSON com nome de campo sem aspas', meaning: 'Algum nome de campo (como name ou query) está sem aspas.', hint: 'Em JSON, os nomes dos campos precisam estar entre aspas duplas.' },
-    JSON_FORMATO_JS:      { g: 'JSON', sev: 'erro', title: 'Parece objeto JavaScript, não JSON', meaning: 'O conteúdo mistura aspas simples, campos sem aspas, comentários ou vírgulas sobrando.', hint: 'Esse formato é de código JavaScript. Reexporte a consulta da plataforma em JSON.' },
-    JSON_COMENTARIO:      { g: 'JSON', sev: 'erro', title: 'JSON com comentários', meaning: 'O arquivo tem comentários (// ou /* */), que JSON não permite.', hint: 'Remova os comentários do arquivo.' },
-    JSON_HTML:            { g: 'JSON', sev: 'erro', title: 'O arquivo é uma página HTML', meaning: 'O conteúdo começa com "<", típico de página da web.', hint: 'Provavelmente foi baixada uma página de erro ou de login no lugar do JSON. Entre na plataforma e exporte de novo.' },
-    JSON_SQL_PURO:        { g: 'JSON', sev: 'erro', title: 'O arquivo contém SQL puro', meaning: 'O conteúdo começa com um comando SQL, não com { do JSON.', hint: 'Este arquivo parece só o texto do SQL. O QueryHub precisa do JSON exportado da consulta dinâmica, que traz também a lista de campos.' },
-    JSON_TEXTO_LIVRE:     { g: 'JSON', sev: 'erro', title: 'O arquivo não parece JSON', meaning: 'O conteúdo não começa com { nem [ (parece texto comum).', hint: 'Confira se é o arquivo certo. O JSON da consulta começa com { .' },
-    JSON_MULTIPLOS:       { g: 'JSON', sev: 'erro', title: 'Mais de um JSON no mesmo arquivo', meaning: 'Há vários objetos { } seguidos, sem estarem dentro de uma lista.', hint: 'Separe cada consulta em um arquivo próprio, ou coloque todas dentro de uma lista [ ... ].' },
-    JSON_QUEBRA_LINHA:    { g: 'JSON', sev: 'erro', title: 'Quebra de linha dentro de um texto', meaning: 'Um texto entre aspas (normalmente o SQL) tem quebras de linha reais, que JSON não aceita.', hint: 'Dentro do JSON as quebras de linha precisam aparecer como \\n. Reexporte da plataforma.' },
-    JSON_ESCAPE:          { g: 'JSON', sev: 'erro', title: 'Barra invertida sem escape', meaning: 'Há uma \\ dentro de um texto sem estar escrita como \\\\.', hint: 'Troque \\ por \\\\ dentro dos textos, ou reexporte o arquivo.' },
-    JSON_VALOR_INVALIDO:  { g: 'JSON', sev: 'erro', title: 'Valor inválido (undefined, NaN ou Infinity)', meaning: 'JSON não aceita esses valores.', hint: 'Troque por null ou remova o campo.' },
-    JSON_SINTAXE:         { g: 'JSON', sev: 'erro', title: 'JSON com erro de sintaxe', meaning: 'O arquivo não é um JSON válido e o erro não se encaixa nos casos comuns.', hint: 'Veja a linha e o trecho indicados. Valide o arquivo em um validador de JSON ou reexporte da plataforma.' },
+    /* ----- Arquivo com defeito ----- */
+    JSON_TRUNCADO:        { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo está incompleto', meaning: 'O arquivo termina no meio, como se tivesse sido cortado. Normalmente acontece quando o download ou a cópia é interrompido.', hint: 'Exporte a consulta de novo pela plataforma e envie o arquivo novo.' },
+    JSON_VIRGULA:         { g: 'Arquivo com defeito', sev: 'erro', title: 'Tem uma vírgula sobrando no arquivo', meaning: 'Existe uma vírgula antes de um fechamento (} ou ]). O arquivo precisa estar perfeito para eu conseguir ler.', hint: 'O mais fácil é exportar a consulta de novo pela plataforma. Se editou o arquivo à mão, apague a vírgula no ponto marcado abaixo.' },
+    JSON_ASPAS:           { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo usa aspas simples (\')', meaning: 'Os textos do arquivo precisam estar entre aspas duplas ("). Isso costuma acontecer quando o arquivo foi digitado ou editado à mão.', hint: 'Exporte a consulta de novo pela plataforma, em vez de editar o arquivo.' },
+    JSON_CHAVE_SEM_ASPAS: { g: 'Arquivo com defeito', sev: 'erro', title: 'Há nomes sem aspas no arquivo', meaning: 'Alguns nomes dentro do arquivo (como name ou query) precisam estar entre aspas duplas e não estão.', hint: 'Exporte a consulta de novo pela plataforma, em vez de editar o arquivo.' },
+    JSON_FORMATO_JS:      { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo parece escrito à mão', meaning: 'O conteúdo mistura aspas simples, nomes sem aspas e vírgulas sobrando, como se tivesse sido digitado e não exportado.', hint: 'Exporte a consulta de novo pela plataforma e envie o arquivo novo.' },
+    JSON_COMENTARIO:      { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo tem comentários', meaning: 'Comentários (// ou /* */) não são permitidos neste tipo de arquivo.', hint: 'Apague os comentários ou exporte a consulta de novo pela plataforma.' },
+    JSON_HTML:            { g: 'Arquivo com defeito', sev: 'erro', title: 'Isso é uma página da internet, não uma consulta', meaning: 'O arquivo é uma página da web salva com final .json. Geralmente acontece quando a sua sessão na plataforma expirou e ela baixou a tela de login no lugar da consulta.', hint: 'Entre de novo na plataforma e exporte a consulta outra vez.' },
+    JSON_SQL_PURO:        { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo só tem o SQL', meaning: 'Este arquivo parece ter só o texto do SQL. Eu preciso do arquivo exportado da consulta dinâmica, que traz também a lista de colunas e filtros.', hint: 'Exporte a consulta pela plataforma (exportar consulta dinâmica) e envie esse arquivo.' },
+    JSON_TEXTO_LIVRE:     { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo não parece uma consulta', meaning: 'O conteúdo parece um texto comum, como um bloco de notas, e não uma consulta exportada.', hint: 'Confira se é o arquivo certo. Uma consulta exportada começa com o símbolo {.' },
+    JSON_MULTIPLOS:       { g: 'Arquivo com defeito', sev: 'erro', title: 'Há mais de uma consulta colada no mesmo arquivo', meaning: 'Várias consultas foram coladas uma depois da outra dentro de um único arquivo, do jeito errado.', hint: 'Separe cada consulta em um arquivo próprio, ou envie todos os arquivos juntos dentro de um ZIP.' },
+    JSON_QUEBRA_LINHA:    { g: 'Arquivo com defeito', sev: 'erro', title: 'Uma quebra de linha está no lugar errado', meaning: 'O texto do SQL tem uma quebra de linha "solta" no arquivo, e isso impede a leitura.', hint: 'Exporte a consulta de novo pela plataforma. Evite abrir e salvar o arquivo em outro programa.' },
+    JSON_ESCAPE:          { g: 'Arquivo com defeito', sev: 'erro', title: 'Uma barra invertida (\\) está atrapalhando', meaning: 'Há uma barra invertida dentro de um texto (comum em caminhos como C:\\pasta) e ela precisaria estar escrita de outro jeito.', hint: 'Exporte a consulta de novo pela plataforma, ou troque cada \\ por \\\\ no ponto marcado.' },
+    JSON_VALOR_INVALIDO:  { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo tem valores que não consigo ler', meaning: 'Há valores como "undefined", "NaN" ou "Infinity", que não existem neste tipo de arquivo.', hint: 'Exporte a consulta de novo pela plataforma. Se editou o arquivo à mão, apague esse valor.' },
+    JSON_SINTAXE:         { g: 'Arquivo com defeito', sev: 'erro', title: 'O arquivo está com defeito e não consegui entender', meaning: 'O conteúdo não está escrito no formato certo e o problema não se encaixa nos casos mais comuns.', hint: 'Veja o trecho marcado abaixo. O mais seguro é exportar a consulta de novo pela plataforma.' },
 
-    /* ----- Estrutura ----- */
-    RAIZ_TIPO:        { g: 'Estrutura', sev: 'erro', title: 'Conteúdo no formato errado', meaning: 'O arquivo é um JSON válido, mas não é um objeto { } (é um número, texto, verdadeiro/falso ou nulo).', hint: 'O arquivo da consulta dinâmica é um objeto com name, query e field.' },
-    RAIZ_LISTA:       { g: 'Estrutura', sev: 'erro', title: 'Lista que não é de consultas', meaning: 'O arquivo é uma lista [ ... ], mas os itens não são consultas (precisam ter query e field).', hint: 'Se for um arquivo de várias consultas, cada item precisa ter "query" e "field". Senão, envie as consultas em arquivos separados.' },
-    RAIZ_ENCAPSULADA: { g: 'Estrutura', sev: 'erro', title: 'Consulta dentro de outra chave', meaning: 'A consulta existe, mas está dentro de uma chave (por exemplo { "data": { ... } }) e não na raiz.', hint: 'Exporte novamente ou mova o conteúdo para a raiz do arquivo.' },
-    BIBLIOTECA_ITEM:  { g: 'Estrutura', sev: 'erro', title: 'Item inválido em uma biblioteca exportada', meaning: 'Em um arquivo de biblioteca (lista de consultas do QueryHub), este item não tem um raw_json válido.', hint: 'Corrija ou remova o item indicado e envie de novo.' },
-    QUERY_AUSENTE:    { g: 'Estrutura', sev: 'erro', title: 'Falta o campo "query"', meaning: 'O JSON não tem o campo com o texto do SQL.', hint: 'O campo se chama "query". Confira se este é o arquivo exportado da consulta dinâmica.' },
-    QUERY_TIPO:       { g: 'Estrutura', sev: 'erro', title: 'O campo "query" não é texto', meaning: 'O campo "query" existe, mas não é o texto do SQL (é número, lista, objeto etc.).', hint: 'O SQL precisa estar em "query" como texto entre aspas.' },
-    QUERY_VAZIA:      { g: 'Estrutura', sev: 'erro', title: 'O campo "query" está vazio', meaning: 'O campo existe, mas não tem SQL.', hint: 'Abra a consulta na plataforma e confira se o SQL foi salvo antes de exportar.' },
-    FIELD_AUSENTE:    { g: 'Estrutura', sev: 'erro', title: 'Falta o campo "field"', meaning: 'O JSON não tem a lista de campos (colunas e filtros).', hint: 'O campo se chama "field". Confira se este é o arquivo exportado da consulta dinâmica.' },
-    FIELD_TIPO:       { g: 'Estrutura', sev: 'erro', title: 'O campo "field" não é uma lista', meaning: 'O campo "field" existe, mas não é uma lista [ ... ].', hint: '"field" precisa ser uma lista de objetos, um para cada coluna ou filtro.' },
+    /* ----- Consulta incompleta ----- */
+    RAIZ_TIPO:        { g: 'Consulta incompleta', sev: 'erro', title: 'O arquivo não parece uma consulta', meaning: 'O conteúdo é só um número, um texto solto ou um "sim/não", e não uma consulta completa.', hint: 'Confira se é o arquivo certo. Uma consulta exportada tem nome, SQL e lista de colunas.' },
+    RAIZ_LISTA:       { g: 'Consulta incompleta', sev: 'erro', title: 'O arquivo é uma lista de outras coisas', meaning: 'Eu esperava uma consulta (ou uma lista de consultas), mas os itens do arquivo não parecem consultas.', hint: 'Confira se é o arquivo certo. Se for um arquivo com várias consultas, cada uma precisa ter o SQL e a lista de colunas.' },
+    RAIZ_ENCAPSULADA: { g: 'Consulta incompleta', sev: 'erro', title: 'A consulta está dentro de uma "caixa" extra', meaning: 'A consulta está lá, mas guardada dentro de outra seção do arquivo, e não no começo dele.', hint: 'Exporte a consulta de novo pela plataforma, ou envie o arquivo sem a seção extra.' },
+    BIBLIOTECA_ITEM:  { g: 'Consulta incompleta', sev: 'erro', title: 'Um item do arquivo de backup está quebrado', meaning: 'Num arquivo de backup do QueryHub, um dos itens está sem o conteúdo da consulta.', hint: 'Corrija ou apague o item indicado e envie o arquivo de novo.' },
+    QUERY_AUSENTE:    { g: 'Consulta incompleta', sev: 'erro', title: 'O arquivo não traz o SQL da consulta', meaning: 'Procurei o texto do SQL dentro do arquivo e não encontrei. Sem ele não dá para importar.', hint: 'Confira se este é o arquivo exportado da consulta dinâmica. Se tiver certeza, exporte de novo pela plataforma.' },
+    QUERY_TIPO:       { g: 'Consulta incompleta', sev: 'erro', title: 'O SQL da consulta veio num formato estranho', meaning: 'O SQL deveria ser um texto, mas veio como número, lista ou outra coisa.', hint: 'Exporte a consulta de novo pela plataforma e envie o arquivo novo.' },
+    QUERY_VAZIA:      { g: 'Consulta incompleta', sev: 'erro', title: 'O SQL da consulta está em branco', meaning: 'O espaço do SQL existe no arquivo, mas está vazio.', hint: 'Abra a consulta na plataforma, confira se o SQL está salvo e exporte de novo.' },
+    FIELD_AUSENTE:    { g: 'Consulta incompleta', sev: 'erro', title: 'O arquivo não traz a lista de colunas e filtros', meaning: 'Sem essa lista eu não consigo mostrar as colunas da consulta para o time.', hint: 'Confira se este é o arquivo exportado da consulta dinâmica. Se tiver certeza, exporte de novo pela plataforma.' },
+    FIELD_TIPO:       { g: 'Consulta incompleta', sev: 'erro', title: 'A lista de colunas e filtros veio num formato estranho', meaning: 'Essa lista deveria ser uma lista de itens, mas veio de outro jeito.', hint: 'Exporte a consulta de novo pela plataforma e envie o arquivo novo.' },
 
-    /* ----- Avisos de conteúdo (a consulta é importada) ----- */
-    LISTA_EXPANDIDA:   { g: 'Conteúdo', sev: 'aviso', title: 'Arquivo com várias consultas', meaning: 'O arquivo era uma lista de consultas. Cada item virou uma consulta separada.', hint: 'Confira os nomes. Cada uma tem seu próprio download em JSON.' },
-    NOME_AUSENTE:      { g: 'Conteúdo', sev: 'aviso', title: 'Consulta sem nome', meaning: 'O JSON não tem o campo "name".', hint: 'Foi usado o nome do arquivo. Edite o nome da consulta.' },
-    NOME_TIPO:         { g: 'Conteúdo', sev: 'aviso', title: 'Nome em formato inesperado', meaning: 'O campo "name" não é um texto.', hint: 'Foi usado o nome do arquivo. Edite o nome da consulta.' },
-    NOME_CURTO:        { g: 'Conteúdo', sev: 'aviso', title: 'Nome muito curto', meaning: 'O nome tem menos de 3 caracteres.', hint: 'Edite o nome para algo descritivo. O editor não aceita nomes com menos de 3 caracteres.' },
-    NOME_LONGO:        { g: 'Conteúdo', sev: 'aviso', title: 'Nome muito longo', meaning: 'O nome tem mais de 160 caracteres.', hint: 'Edite o nome para algo mais curto. Nomes longos quebram o layout dos cards.' },
-    FIELD_VAZIO:       { g: 'Conteúdo', sev: 'aviso', title: 'Lista de campos vazia', meaning: 'O campo "field" é uma lista vazia, sem colunas nem filtros.', hint: 'A consulta foi importada, mas sem colunas para mostrar. Confira a exportação.' },
-    SEM_COLUNAS:       { g: 'Conteúdo', sev: 'aviso', title: 'Consulta sem colunas', meaning: 'Nenhum campo tem tipo 1 (coluna de retorno). Só há filtros ou campos de outro tipo.', hint: 'É normal para rotinas que não retornam dados. Se deveria retornar, confira o campo "tipo" dos campos.' },
-    FIELD_ITEM_INVALIDO:{ g: 'Conteúdo', sev: 'aviso', title: 'Itens inválidos na lista de campos', meaning: 'Alguns itens de "field" não são objetos (são nulos, textos ou números) e foram ignorados.', hint: 'Confira a exportação. Esses itens não aparecem como colunas.' },
-    CAMPO_SEM_NOME:    { g: 'Conteúdo', sev: 'aviso', title: 'Coluna sem nome', meaning: 'Há campos de coluna (tipo 1) sem o campo "name", ignorados.', hint: 'Cada coluna precisa de um "name". Confira a exportação.' },
-    CAMPO_SEM_TIPO:    { g: 'Conteúdo', sev: 'aviso', title: 'Campo sem tipo', meaning: 'Há campos sem o valor "tipo". Eles não são tratados como colunas.', hint: 'As colunas de retorno têm "tipo": 1. Se estes campos deveriam ser colunas, confira a exportação.' },
-    CAMPO_TIPO_INVALIDO:{ g: 'Conteúdo', sev: 'aviso', title: 'Campo com tipo inválido', meaning: 'O valor de "tipo" não é um número (por exemplo, é um texto).', hint: 'O "tipo" deve ser numérico. Estes campos não são tratados como colunas.' },
-    COLUNA_DUPLICADA:  { g: 'Conteúdo', sev: 'aviso', title: 'Colunas com nome repetido', meaning: 'Duas ou mais colunas têm o mesmo "name". Só a primeira foi mantida.', hint: 'Colunas repetidas costumam indicar erro no SQL ou na exportação.' },
-    MUITAS_COLUNAS:    { g: 'Conteúdo', sev: 'aviso', title: 'Quantidade de colunas muito alta', meaning: 'A consulta retorna mais de 250 colunas.', hint: 'Funciona, mas é raro. Confira se a consulta é essa mesma.' },
-    PARAM_SEM_CAMPO:   { g: 'Conteúdo', sev: 'aviso', title: 'Filtro usado no SQL sem definição', meaning: 'O SQL usa um parâmetro (:nome) que não tem campo correspondente em "field".', hint: 'O filtro aparece com o tipo "data" por padrão. Confira se o tipo e o nome estão certos.' },
-    PARAM_NAO_USADO:   { g: 'Conteúdo', sev: 'aviso', title: 'Filtro definido mas não usado no SQL', meaning: 'Há um campo de filtro (:nome) em "field" que o SQL não utiliza.', hint: 'Pode ser sobra de edição. Confira se o filtro deveria estar no SQL.' },
-    PARAM_EM_TEXTO:    { g: 'Conteúdo', sev: 'aviso', title: 'Possível filtro falso (dentro de texto ou comentário)', meaning: 'Um ":nome" aparece só dentro de um texto entre aspas ou de um comentário do SQL.', hint: 'Foi contado como filtro, mas pode não ser um. Se não for, ignore.' },
-    QUERY_SEM_COMANDO: { g: 'Conteúdo', sev: 'aviso', title: 'SQL sem comando reconhecido', meaning: 'Não encontrei SELECT, WITH, CALL ou outro comando SQL no texto.', hint: 'Confira se o campo "query" tem mesmo o SQL.' },
-    COMANDO_ESCRITA:   { g: 'Conteúdo', sev: 'aviso', title: 'SQL que altera dados', meaning: 'O SQL tem comando de escrita (INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, MERGE, CREATE, GRANT ou REVOKE).', hint: 'Consultas da biblioteca costumam ser só de leitura. Confirme se é intencional antes de publicar para o time.' },
-    MULTIPLOS_COMANDOS:{ g: 'Conteúdo', sev: 'aviso', title: 'Mais de um comando SQL', meaning: 'Há vários comandos separados por ponto e vírgula.', hint: 'Consultas dinâmicas costumam ter um único comando. Confira se está correto.' },
-    QUERY_GRANDE:      { g: 'Conteúdo', sev: 'aviso', title: 'SQL muito grande', meaning: 'O SQL tem mais de 200 mil caracteres.', hint: 'Funciona, mas é muito incomum. Confira o arquivo.' },
+    /* ----- Pontos de atenção (a consulta foi importada) ----- */
+    LISTA_EXPANDIDA:    { g: 'Pontos de atenção', sev: 'info', title: 'O arquivo tinha várias consultas juntas', meaning: 'Cada uma virou uma consulta separada no QueryHub.', hint: 'Dê uma olhada nos nomes. Cada consulta tem o seu próprio botão de baixar.' },
+    NOME_AUSENTE:       { g: 'Pontos de atenção', sev: 'aviso', title: 'A consulta está sem nome', meaning: 'O arquivo não informa o nome da consulta, então usei o nome do arquivo no lugar.', hint: 'Abra a consulta e escreva um nome claro para o time (botão Editar).' },
+    NOME_TIPO:          { g: 'Pontos de atenção', sev: 'aviso', title: 'O nome da consulta veio num formato estranho', meaning: 'O nome deveria ser um texto, então usei o nome do arquivo no lugar.', hint: 'Abra a consulta e escreva um nome claro para o time (botão Editar).' },
+    NOME_CURTO:         { g: 'Pontos de atenção', sev: 'aviso', title: 'O nome da consulta é muito curto', meaning: 'Nomes com menos de 3 letras dificultam a busca e o editor não os aceita.', hint: 'Abra a consulta e escreva um nome que descreva o que ela entrega.' },
+    NOME_LONGO:         { g: 'Pontos de atenção', sev: 'aviso', title: 'O nome da consulta é muito longo', meaning: 'Nomes com mais de 160 letras quebram o visual dos cards.', hint: 'Abra a consulta e deixe o nome mais curto.' },
+    FIELD_VAZIO:        { g: 'Pontos de atenção', sev: 'aviso', title: 'A consulta não tem colunas nem filtros cadastrados', meaning: 'A consulta foi importada, mas o card vai aparecer sem nenhuma coluna para o time conferir.', hint: 'Confira se a exportação saiu completa. Se preferir, exporte de novo pela plataforma.' },
+    SEM_COLUNAS:        { g: 'Pontos de atenção', sev: 'aviso', title: 'A consulta não mostra colunas', meaning: 'Existem campos cadastrados, mas nenhum é uma coluna de resultado (só filtros ou outros itens). É normal em rotinas que não devolvem dados.', hint: 'Se esta consulta deveria devolver dados, confira a exportação na plataforma. Se for uma rotina, pode ignorar.' },
+    FIELD_ITEM_INVALIDO:{ g: 'Pontos de atenção', sev: 'aviso', title: 'Alguns itens da lista de colunas estavam quebrados', meaning: 'Esses itens estavam em branco ou ilegíveis e foram ignorados. Eles não aparecem como colunas.', hint: 'Compare com a consulta na plataforma. Se faltar alguma coluna, exporte de novo.' },
+    CAMPO_SEM_NOME:     { g: 'Pontos de atenção', sev: 'aviso', title: 'Algumas colunas estão sem nome', meaning: 'Colunas sem nome foram ignoradas e não aparecem para o time.', hint: 'Compare com a consulta na plataforma. Se faltar alguma coluna, exporte de novo.' },
+    CAMPO_SEM_TIPO:     { g: 'Pontos de atenção', sev: 'aviso', title: 'Alguns campos não dizem se são colunas ou filtros', meaning: 'Sem essa informação eu não os mostro como colunas.', hint: 'Se esses itens deveriam aparecer como colunas, exporte a consulta de novo pela plataforma.' },
+    CAMPO_TIPO_INVALIDO:{ g: 'Pontos de atenção', sev: 'aviso', title: 'Alguns campos têm uma indicação que não entendo', meaning: 'A indicação de coluna ou filtro desses campos veio escrita de um jeito que não reconheço, então eles não aparecem como colunas.', hint: 'Se esses itens deveriam aparecer como colunas, exporte a consulta de novo pela plataforma.' },
+    COLUNA_DUPLICADA:   { g: 'Pontos de atenção', sev: 'aviso', title: 'Há colunas repetidas', meaning: 'Duas ou mais colunas têm o mesmo nome. Mantive só a primeira de cada.', hint: 'Isso costuma indicar a mesma coluna listada duas vezes no SQL. Vale conferir com quem criou a consulta.' },
+    MUITAS_COLUNAS:     { g: 'Pontos de atenção', sev: 'aviso', title: 'A consulta tem muitas colunas (mais de 250)', meaning: 'Funciona, mas é raro uma consulta devolver tantas colunas.', hint: 'Confira se é essa consulta mesmo. Se estiver certo, pode ignorar.' },
+    PARAM_SEM_CAMPO:    { g: 'Pontos de atenção', sev: 'aviso', title: 'O SQL usa um filtro que não foi descrito', meaning: 'O SQL tem um filtro (como :data_inicio) que não aparece na lista de filtros da consulta. Vou tratá-lo como filtro de data.', hint: 'Abra os detalhes da consulta e confira se o filtro está certo. Se o tipo estiver errado, avise quem criou a consulta.' },
+    PARAM_NAO_USADO:    { g: 'Pontos de atenção', sev: 'aviso', title: 'Há um filtro cadastrado que o SQL não usa', meaning: 'O filtro está na lista, mas o SQL não o utiliza. Pode ser sobra de uma edição antiga.', hint: 'Confira com quem criou a consulta se o filtro ainda faz sentido.' },
+    PARAM_EM_TEXTO:     { g: 'Pontos de atenção', sev: 'aviso', title: 'Um "filtro" pode ser só um pedaço de texto', meaning: 'Encontrei algo como :nome dentro de um texto ou de um comentário do SQL e contei como filtro. Pode ser engano.', hint: 'Se não for um filtro de verdade, pode ignorar este aviso.' },
+    QUERY_SEM_COMANDO:  { g: 'Pontos de atenção', sev: 'aviso', title: 'Não encontrei um comando SQL conhecido', meaning: 'Não achei SELECT, WITH, CALL ou outro comando SQL comum no texto da consulta.', hint: 'Abra os detalhes e confira se o SQL é esse mesmo.' },
+    COMANDO_ESCRITA:    { g: 'Pontos de atenção', sev: 'aviso', title: 'O SQL pode alterar ou apagar dados', meaning: 'O SQL tem comandos como INSERT, UPDATE, DELETE, DROP ou ALTER. Consultas da biblioteca costumam só ler dados.', hint: 'Confirme com quem criou a consulta se isso é intencional ANTES de publicar para o time.' },
+    MULTIPLOS_COMANDOS: { g: 'Pontos de atenção', sev: 'aviso', title: 'O SQL tem mais de um comando', meaning: 'Há texto depois de um ponto e vírgula. Consultas dinâmicas costumam ter um comando só.', hint: 'Confira com quem criou a consulta se está certo.' },
+    QUERY_GRANDE:       { g: 'Pontos de atenção', sev: 'aviso', title: 'O SQL é muito grande', meaning: 'O SQL tem mais de 200 mil caracteres. Funciona, mas é muito incomum.', hint: 'Confira se é o arquivo certo.' },
 
-    /* ----- Duplicidade ----- */
-    DUP_LOTE:       { g: 'Duplicidade', sev: 'aviso', title: 'Nome de arquivo repetido no mesmo envio', meaning: 'Dois arquivos do envio tinham o mesmo nome. Os dois foram importados e o segundo foi renomeado.', hint: 'Confira se são mesmo consultas diferentes.' },
-    MESMO_SQL:      { g: 'Duplicidade', sev: 'aviso', title: 'SQL idêntico ao de outra consulta', meaning: 'O SQL é igual ao de outra consulta (do mesmo envio ou já cadastrada).', hint: 'Pode ser cópia. Se for, considere manter só uma.' },
-    NOME_REPETIDO:  { g: 'Duplicidade', sev: 'aviso', title: 'Nome igual ao de outra consulta', meaning: 'Existe outra consulta com o mesmo nome, mas com SQL diferente.', hint: 'Renomeie para o time conseguir distinguir as duas na busca.' },
-    ATUALIZADA:     { g: 'Duplicidade', sev: 'info', title: 'Consulta existente atualizada', meaning: 'Já havia uma consulta com o mesmo nome de arquivo. O JSON foi atualizado; categorias, descrição e destaques foram mantidos.', hint: 'Nenhuma ação necessária. Se não era para atualizar, não publique.' }
+    /* ----- Repetidas ----- */
+    DUP_LOTE:       { g: 'Repetidas', sev: 'aviso', title: 'Dois arquivos deste envio tinham o mesmo nome', meaning: 'Importei os dois, e o segundo ficou com outro nome para não sobrescrever o primeiro.', hint: 'Confira se são mesmo consultas diferentes. Se forem a mesma, exclua uma.' },
+    MESMO_SQL:      { g: 'Repetidas', sev: 'aviso', title: 'O SQL é igual ao de outra consulta', meaning: 'Esta consulta usa exatamente o mesmo SQL de outra (do mesmo envio ou já cadastrada). Pode ser uma cópia.', hint: 'Se for cópia, considere manter só uma delas.' },
+    NOME_REPETIDO:  { g: 'Repetidas', sev: 'aviso', title: 'Há outra consulta com o mesmo nome', meaning: 'As duas têm SQL diferente, mas o mesmo nome. Isso confunde o time na hora de buscar.', hint: 'Renomeie uma delas (botão Editar) para ficar fácil de distinguir.' },
+    ATUALIZADA:     { g: 'Repetidas', sev: 'info', title: 'Atualizei uma consulta que já existia', meaning: 'Já havia uma consulta com o mesmo nome de arquivo. Atualizei o conteúdo e mantive as categorias, a descrição e os destaques que você já tinha definido.', hint: 'Nada a fazer. Se não era para atualizar, não publique e use Desfazer.' }
   };
 
   function mk(code, detail, extra) {
@@ -147,12 +147,12 @@
   function isError(it) { return it.sev === 'erro'; }
 
   function describe(v) {
-    if (v === null) return 'nulo (null)';
+    if (v === null) return 'vazio';
     if (Array.isArray(v)) return 'uma lista com ' + v.length + ' item(ns)';
-    if (typeof v === 'object') return 'um objeto';
+    if (typeof v === 'object') return 'um bloco de dados';
     if (typeof v === 'string') return 'um texto';
     if (typeof v === 'number') return 'um número';
-    if (typeof v === 'boolean') return 'um valor verdadeiro/falso';
+    if (typeof v === 'boolean') return 'um sim/não';
     return 'um valor desconhecido';
   }
 
@@ -233,25 +233,25 @@
 
     function out(code, detail) { return mk(code, detail, base); }
 
-    if (first === '<') return out('JSON_HTML', 'O conteúdo começa com "<" (parece HTML).');
-    if (/^(select|with|insert|update|delete|call|exec|execute)\b/i.test(trimmed)) return out('JSON_SQL_PURO', 'O conteúdo começa com "' + trimmed.split(/\s+/)[0].toUpperCase() + '", um comando SQL.');
-    if (first !== '{' && first !== '[') return out('JSON_TEXTO_LIVRE', 'O conteúdo começa com "' + trimmed.slice(0, 20).replace(/\s+/g, ' ') + '" em vez de {.');
+    if (first === '<') return out('JSON_HTML', 'O arquivo começa como uma página da internet (começa com "<").');
+    if (/^(select|with|insert|update|delete|call|exec|execute)\b/i.test(trimmed)) return out('JSON_SQL_PURO', 'O arquivo começa com "' + trimmed.split(/\s+/)[0].toUpperCase() + '" (um comando SQL), e não como o arquivo exportado da consulta.');
+    if (first !== '{' && first !== '[') return out('JSON_TEXTO_LIVRE', 'O arquivo começa com "' + trimmed.slice(0, 20).replace(/\s+/g, ' ') + '", que parece texto comum.');
     if (/end of (json )?(input|data)|unexpected end|unexpected eof/i.test(msg) || (/unterminated string/i.test(msg) && pos != null && pos >= trimmed.length - 1) || (pos != null && pos >= trimmed.length)) {
-      return out('JSON_TRUNCADO', 'O arquivo termina antes de o JSON ser fechado (' + trimmed.length + ' caracteres lidos).');
+      return out('JSON_TRUNCADO', 'O arquivo acaba de repente, depois de ' + trimmed.length + ' caracteres.');
     }
-    if (tryParse(REPAIRS.comentario(body))) return out('JSON_COMENTARIO', 'Foram encontrados comentários no arquivo' + where + '.');
-    if (tryParse(REPAIRS.virgula(body))) return out('JSON_VIRGULA', 'Há uma vírgula sobrando antes de } ou ]' + where + '.');
-    if (tryParse(REPAIRS.multiplos(body))) return out('JSON_MULTIPLOS', 'O arquivo tem mais de um objeto JSON seguido' + where + '.');
-    if (tryParse(REPAIRS.quebra(body))) return out('JSON_QUEBRA_LINHA', 'Há quebra de linha real dentro de um texto entre aspas' + where + '.');
-    if (tryParse(REPAIRS.escape(body))) return out('JSON_ESCAPE', 'Há uma barra invertida sem escape dentro de um texto' + where + '.');
-    if (tryParse(REPAIRS.valor(body))) return out('JSON_VALOR_INVALIDO', 'O arquivo usa undefined, NaN ou Infinity' + where + '.');
-    if (tryParse(REPAIRS.chave(body))) return out('JSON_CHAVE_SEM_ASPAS', 'Há um nome de campo sem aspas' + where + '.');
+    if (tryParse(REPAIRS.comentario(body))) return out('JSON_COMENTARIO', 'Há comentários dentro do arquivo' + where + '.');
+    if (tryParse(REPAIRS.virgula(body))) return out('JSON_VIRGULA', 'Há uma vírgula sobrando antes de um fechamento' + where + '.');
+    if (tryParse(REPAIRS.multiplos(body))) return out('JSON_MULTIPLOS', 'O arquivo contém mais de uma consulta colada na outra' + where + '.');
+    if (tryParse(REPAIRS.quebra(body))) return out('JSON_QUEBRA_LINHA', 'Há uma quebra de linha no meio de um texto' + where + '.');
+    if (tryParse(REPAIRS.escape(body))) return out('JSON_ESCAPE', 'Há uma barra invertida (\\) onde não deveria' + where + '.');
+    if (tryParse(REPAIRS.valor(body))) return out('JSON_VALOR_INVALIDO', 'O arquivo tem valores como "undefined" ou "NaN"' + where + '.');
+    if (tryParse(REPAIRS.chave(body))) return out('JSON_CHAVE_SEM_ASPAS', 'Há um nome sem aspas' + where + '.');
     if (tryParse(REPAIRS.aspas(body))) return out('JSON_ASPAS', 'O arquivo usa aspas simples' + where + '.');
     var combined = REPAIRS.virgula(REPAIRS.chave(REPAIRS.aspas(REPAIRS.comentario(body))));
-    if (tryParse(combined)) return out('JSON_FORMATO_JS', 'O conteúdo parece um objeto JavaScript' + where + '.');
-    if (/control character|unterminated|newline/i.test(msg)) return out('JSON_QUEBRA_LINHA', 'Há um caractere de controle ou texto sem fechamento' + where + '.');
-    if (/escape/i.test(msg)) return out('JSON_ESCAPE', 'Há um caractere de escape inválido' + where + '.');
-    return out('JSON_SINTAXE', 'O JSON tem um erro de sintaxe' + where + '.');
+    if (tryParse(combined)) return out('JSON_FORMATO_JS', 'O arquivo parece ter sido escrito à mão' + where + '.');
+    if (/control character|unterminated|newline/i.test(msg)) return out('JSON_QUEBRA_LINHA', 'Há um texto que não fecha ou um caractere de controle' + where + '.');
+    if (/escape/i.test(msg)) return out('JSON_ESCAPE', 'Há um caractere especial escrito errado' + where + '.');
+    return out('JSON_SINTAXE', 'Há um erro de escrita no arquivo' + where + '.');
   }
 
   /* ----- SQL: remove comentários e textos para analisar o que sobra ----- */
@@ -331,47 +331,47 @@
     });
 
     // --- avisos
-    if (fields.length === 0) issues.push(mk('FIELD_VAZIO', 'A lista "field" não tem nenhum item.'));
-    else if (cols.length === 0) issues.push(mk('SEM_COLUNAS', 'Nenhum dos ' + fields.length + ' campos tem tipo 1 (coluna).'));
-    if (nonObj.length) issues.push(mk('FIELD_ITEM_INVALIDO', nonObj.length + ' item(ns) de "field" não são objetos (posições: ' + listNames(nonObj) + ').'));
-    if (noName.length) issues.push(mk('CAMPO_SEM_NOME', noName.length + ' coluna(s) sem "name" (posições: ' + listNames(noName) + ').'));
-    if (noTipo.length) issues.push(mk('CAMPO_SEM_TIPO', noTipo.length + ' campo(s) sem "tipo": ' + listNames(noTipo) + '.'));
-    if (badTipo.length) issues.push(mk('CAMPO_TIPO_INVALIDO', 'Campo(s) com "tipo" que não é número: ' + listNames(badTipo) + '.'));
-    if (dups.length) issues.push(mk('COLUNA_DUPLICADA', 'Colunas repetidas (só a primeira foi mantida): ' + listNames(dups) + '.'));
-    if (cols.length > WARN_COLUMNS) issues.push(mk('MUITAS_COLUNAS', 'A consulta tem ' + cols.length + ' colunas.'));
+    if (fields.length === 0) issues.push(mk('FIELD_VAZIO', 'A consulta não tem nenhuma coluna nem filtro cadastrado.'));
+    else if (cols.length === 0) issues.push(mk('SEM_COLUNAS', 'Existem ' + fields.length + ' campo(s), mas nenhum é uma coluna de resultado.'));
+    if (nonObj.length) issues.push(mk('FIELD_ITEM_INVALIDO', nonObj.length + ' item(ns) da lista de colunas e filtros estavam em branco ou quebrados e foram ignorados (posições: ' + listNames(nonObj) + ').'));
+    if (noName.length) issues.push(mk('CAMPO_SEM_NOME', noName.length + ' coluna(s) estão sem nome e foram ignoradas (posições: ' + listNames(noName) + ').'));
+    if (noTipo.length) issues.push(mk('CAMPO_SEM_TIPO', noTipo.length + ' campo(s) não dizem se são colunas ou filtros: ' + listNames(noTipo) + '.'));
+    if (badTipo.length) issues.push(mk('CAMPO_TIPO_INVALIDO', 'Campo(s) com uma indicação que não reconheço: ' + listNames(badTipo) + '.'));
+    if (dups.length) issues.push(mk('COLUNA_DUPLICADA', 'Estas colunas aparecem mais de uma vez (mantive só a primeira de cada): ' + listNames(dups) + '.'));
+    if (cols.length > WARN_COLUMNS) issues.push(mk('MUITAS_COLUNAS', 'A consulta retorna ' + cols.length + ' colunas.'));
 
     var semCampo = rawParams.filter(function (p) { return !declared[p.toLowerCase()]; });
-    if (semCampo.length) issues.push(mk('PARAM_SEM_CAMPO', 'Parâmetro(s) usados no SQL sem campo em "field": ' + semCampo.map(function (p) { return ':' + p; }).join(', ') + '.'));
+    if (semCampo.length) issues.push(mk('PARAM_SEM_CAMPO', 'O SQL usa estes filtros, mas eles não estão descritos na consulta: ' + semCampo.map(function (p) { return ':' + p; }).join(', ') + '. Vou tratá-los como filtro de data.'));
 
     var emTexto = rawParams.filter(function (p) { return cleanParams.indexOf(p) === -1; });
-    if (emTexto.length) issues.push(mk('PARAM_EM_TEXTO', 'Só aparece dentro de texto ou comentário: ' + emTexto.map(function (p) { return ':' + p; }).join(', ') + '.'));
+    if (emTexto.length) issues.push(mk('PARAM_EM_TEXTO', 'Estes itens só aparecem dentro de um texto ou comentário do SQL, e podem não ser filtros de verdade: ' + emTexto.map(function (p) { return ':' + p; }).join(', ') + '.'));
 
     var naoUsados = fields.filter(function (f) {
       return f && typeof f === 'object' && typeof f.name === 'string' && f.name.charAt(0) === ':' && rawParams.map(function (p) { return p.toLowerCase(); }).indexOf(f.name.slice(1).toLowerCase()) === -1;
     }).map(function (f) { return f.name; });
-    if (naoUsados.length) issues.push(mk('PARAM_NAO_USADO', 'Filtro(s) definidos e não usados no SQL: ' + listNames(naoUsados) + '.'));
+    if (naoUsados.length) issues.push(mk('PARAM_NAO_USADO', 'Estes filtros estão cadastrados, mas o SQL não os usa: ' + listNames(naoUsados) + '.'));
 
     var clean = stripSql(sql);
     if (!/\b(select|with|insert|update|delete|call|exec|execute|show|values|table|merge|explain|create|drop|alter|truncate)\b/i.test(clean)) {
-      issues.push(mk('QUERY_SEM_COMANDO', 'Não foi encontrado nenhum comando SQL no texto de "query".'));
+      issues.push(mk('QUERY_SEM_COMANDO', 'Não encontrei nenhum comando SQL conhecido (como SELECT) no texto da consulta.'));
     }
     var writes = clean.match(/\b(insert|update|delete|drop|truncate|alter|merge|create|grant|revoke)\b/gi);
     if (writes) {
       var uniq = []; writes.forEach(function (w) { w = w.toUpperCase(); if (uniq.indexOf(w) === -1) uniq.push(w); });
-      issues.push(mk('COMANDO_ESCRITA', 'Comando(s) encontrados: ' + uniq.join(', ') + '.'));
+      issues.push(mk('COMANDO_ESCRITA', 'O SQL contém ' + uniq.join(', ') + ', comandos que podem alterar ou apagar dados.'));
     }
-    if (/;\s*\S/.test(clean.trim())) issues.push(mk('MULTIPLOS_COMANDOS', 'Há texto depois de um ponto e vírgula, o que indica mais de um comando.'));
-    if (sql.length > WARN_QUERY_CHARS) issues.push(mk('QUERY_GRANDE', 'O SQL tem ' + sql.length + ' caracteres.'));
+    if (/;\s*\S/.test(clean.trim())) issues.push(mk('MULTIPLOS_COMANDOS', 'O SQL tem mais de um comando (há texto depois de um ponto e vírgula).'));
+    if (sql.length > WARN_QUERY_CHARS) issues.push(mk('QUERY_GRANDE', 'O SQL tem ' + sql.length + ' caracteres (mais de 200 mil).'));
 
     var name;
     if (typeof data.name === 'string' && data.name.trim()) name = data.name.trim();
     else {
       name = fileName.replace(/\.json$/i, '');
-      if (data.name === undefined || data.name === null || data.name === '') issues.push(mk('NOME_AUSENTE', 'Foi usado o nome do arquivo: "' + name + '".'));
-      else issues.push(mk('NOME_TIPO', 'O campo "name" é ' + describe(data.name) + '. Foi usado o nome do arquivo: "' + name + '".'));
+      if (data.name === undefined || data.name === null || data.name === '') issues.push(mk('NOME_AUSENTE', 'O arquivo não informa o nome da consulta. Usei o nome do arquivo: "' + name + '".'));
+      else issues.push(mk('NOME_TIPO', 'O nome da consulta veio como ' + describe(data.name) + '. Usei o nome do arquivo: "' + name + '".'));
     }
-    if (name.length < 3) issues.push(mk('NOME_CURTO', 'O nome "' + name + '" tem ' + name.length + ' caractere(s).'));
-    if (name.length > 160) issues.push(mk('NOME_LONGO', 'O nome tem ' + name.length + ' caracteres.'));
+    if (name.length < 3) issues.push(mk('NOME_CURTO', 'O nome "' + name + '" tem só ' + name.length + ' letra(s).'));
+    if (name.length > 160) issues.push(mk('NOME_LONGO', 'O nome tem ' + name.length + ' caracteres (o ideal é até 160).'));
 
     return {
       id: newId(),
@@ -391,7 +391,7 @@
   function analyzeData(data, fileName) {
     var issues = [];
     if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-      issues.push(mk('RAIZ_TIPO', 'O conteúdo é ' + describe(data) + ', mas era esperado um objeto { ... }.'));
+      issues.push(mk('RAIZ_TIPO', 'O conteúdo do arquivo é ' + describe(data) + ', e não uma consulta completa.'));
       return { q: null, issues: issues };
     }
     var hasQ = data.query !== undefined, hasF = data.field !== undefined;
@@ -399,27 +399,27 @@
     if (!hasQ && !hasF) {
       var inner = Object.keys(data).filter(function (k) { return looksLikeConsulta(data[k]); })[0];
       if (inner) {
-        issues.push(mk('RAIZ_ENCAPSULADA', 'A consulta está dentro da chave "' + inner + '".'));
+        issues.push(mk('RAIZ_ENCAPSULADA', 'A consulta está guardada dentro de uma seção chamada "' + inner + '", e não no começo do arquivo.'));
         return { q: null, issues: issues };
       }
     }
 
     if (!hasQ) {
       var altQ = findKey(data, ['query', 'sql', 'consulta', 'script', 'statement', 'querytext', 'query_text']);
-      issues.push(mk('QUERY_AUSENTE', 'O arquivo não tem o campo "query".' + (Object.keys(data).length ? ' Campos encontrados: ' + listNames(Object.keys(data), 10) + '.' : ' O objeto está vazio.'),
-        altQ ? { hint: 'Encontrei a chave "' + altQ + '", mas o campo esperado se chama "query". Confira se este é o arquivo exportado da consulta dinâmica.' } : null));
+      issues.push(mk('QUERY_AUSENTE', 'O arquivo não tem o SQL da consulta.' + (Object.keys(data).length ? ' O que o arquivo contém: ' + listNames(Object.keys(data), 10) + '.' : ' O arquivo está vazio por dentro.'),
+        altQ ? { hint: 'Encontrei "' + altQ + '" no arquivo, que pode ser o SQL, mas com outro nome. Confira se este é mesmo o arquivo exportado da consulta dinâmica.' } : null));
     } else if (typeof data.query !== 'string') {
-      issues.push(mk('QUERY_TIPO', 'O campo "query" é ' + describe(data.query) + '.'));
+      issues.push(mk('QUERY_TIPO', 'O SQL deveria ser um texto, mas veio como ' + describe(data.query) + '.'));
     } else if (!data.query.trim()) {
-      issues.push(mk('QUERY_VAZIA', 'O campo "query" tem só espaços ou está em branco.'));
+      issues.push(mk('QUERY_VAZIA', 'O espaço do SQL existe, mas está em branco.'));
     }
 
     if (!hasF) {
       var altF = findKey(data, ['field', 'fields', 'campos', 'columns', 'colunas']);
-      issues.push(mk('FIELD_AUSENTE', 'O arquivo não tem o campo "field".',
-        altF ? { hint: 'Encontrei a chave "' + altF + '", mas o campo esperado se chama "field". Confira se este é o arquivo exportado da consulta dinâmica.' } : null));
+      issues.push(mk('FIELD_AUSENTE', 'O arquivo não tem a lista de colunas e filtros.',
+        altF ? { hint: 'Encontrei "' + altF + '" no arquivo, que pode ser a lista de colunas, mas com outro nome. Confira se este é mesmo o arquivo exportado da consulta dinâmica.' } : null));
     } else if (!Array.isArray(data.field)) {
-      issues.push(mk('FIELD_TIPO', 'O campo "field" é ' + describe(data.field) + '.'));
+      issues.push(mk('FIELD_TIPO', 'A lista de colunas e filtros deveria ser uma lista, mas veio como ' + describe(data.field) + '.'));
     }
 
     if (issues.some(isError)) return { q: null, issues: issues };
@@ -429,7 +429,7 @@
   function normalizeLibraryItem(item, i) {
     var label = 'Item ' + (i + 1) + ': ';
     if (!item || typeof item !== 'object' || !item.raw_json || typeof item.raw_json !== 'object') {
-      return { q: null, issues: [mk('BIBLIOTECA_ITEM', label + 'não tem "raw_json" válido.')] };
+      return { q: null, issues: [mk('BIBLIOTECA_ITEM', label + 'está sem o conteúdo da consulta.')] };
     }
     var fname = typeof item.source_filename === 'string' && item.source_filename ? item.source_filename : 'item_' + (i + 1) + '.json';
     var res = analyzeData(item.raw_json, fname);
@@ -458,9 +458,9 @@
   function inspectText(text, fileName) {
     var pre = [];
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-    if (!text.trim()) return { results: [], issues: [mk('ARQ_VAZIO', 'O arquivo não tem conteúdo.')] };
+    if (!text.trim()) return { results: [], issues: [mk('ARQ_VAZIO', 'O arquivo não tem nenhum conteúdo.')] };
     if (text.length > MAX_FILE_CHARS) return { results: [], issues: [mk('ARQ_GRANDE', 'O arquivo tem ' + (text.length / 1048576).toFixed(1) + ' MB e o limite é 8 MB.')] };
-    if (text.indexOf('\uFFFD') !== -1) pre.push(mk('ARQ_ENCODING', 'O texto contém o caractere � (acentos perdidos).'));
+    if (text.indexOf('\uFFFD') !== -1) pre.push(mk('ARQ_ENCODING', 'O texto tem o caractere � no lugar de alguns acentos.'));
     if (text.length > WARN_FILE_CHARS) pre.push(mk('ARQ_PESADO', 'O arquivo tem ' + (text.length / 1048576).toFixed(1) + ' MB.'));
 
     var data;
@@ -484,11 +484,11 @@
           r.issues.forEach(function (x) { x.detail = 'Item ' + (i + 1) + ': ' + x.detail; });
           if (r.q) results.push({ q: r.q, keep: false, issues: r.issues }); else issues = issues.concat(r.issues);
         });
-        issues.push(mk('LISTA_EXPANDIDA', 'O arquivo tinha ' + data.length + ' consultas; cada uma virou uma consulta separada.'));
+        issues.push(mk('LISTA_EXPANDIDA', 'O arquivo tinha ' + data.length + ' consultas juntas; cada uma virou uma consulta separada.'));
         return { results: results, issues: issues };
       }
       var sample = data.length ? 'O primeiro item é ' + describe(data[0]) + '.' : 'A lista está vazia.';
-      return { results: [], issues: pre.concat([mk('RAIZ_LISTA', 'O arquivo é uma lista com ' + data.length + ' item(ns). ' + sample)]) };
+      return { results: [], issues: pre.concat([mk('RAIZ_LISTA', 'O arquivo é uma lista de ' + data.length + ' item(ns). ' + sample)]) };
     }
 
     var res = analyzeData(data, fileName);
@@ -589,7 +589,7 @@
         var stem = base.replace(/\.json$/i, ''), n = (dupCount[base] || 1) + 1, nn;
         do { nn = stem + '_' + n + '.json'; n++; } while (fileOwner[nn] !== undefined);
         dupCount[base] = n - 1;
-        r.issues.push(mk('DUP_LOTE', 'Já havia um arquivo chamado "' + base + '" neste envio (' + fileOwner[base] + '). Esta cópia foi importada como "' + nn + '".'));
+        r.issues.push(mk('DUP_LOTE', 'Outro arquivo deste mesmo envio também se chamava "' + base + '" (' + fileOwner[base] + '). Importei os dois: esta cópia ficou como "' + nn + '".'));
         q.source_filename = nn;
         base = nn;
       }
@@ -606,7 +606,7 @@
       var nm = normalizeText(q.name);
       if (nm && !sameSql) {
         var other = nameOwner[nm] || (libName[nm] && libName[nm] !== base ? libName[nm] : null);
-        if (other) r.issues.push(mk('NOME_REPETIDO', 'Já existe uma consulta chamada "' + q.name + '" (arquivo "' + other + '") com SQL diferente.'));
+        if (other) r.issues.push(mk('NOME_REPETIDO', 'Já existe outra consulta chamada "' + q.name + '" (arquivo "' + other + '"), mas com SQL diferente.'));
         if (!nameOwner[nm]) nameOwner[nm] = base;
       }
     });
@@ -622,9 +622,16 @@
     });
   }
 
-  /* ---------- Relatório de importação ---------- */
-  var REPORT_KEY = 'queryhub:last-report:v1';
+  /* ---------- Relatório de importação ----------
+     É uma lista de pendências que acompanha o que você faz: ao excluir uma consulta, salvar a edição
+     dela ou marcar como revisada, o item deixa de aparecer. Erros de arquivos que não entraram ficam
+     até serem corrigidos (reenviando o arquivo) ou dispensados. */
+  var REPORT_KEY = 'queryhub:last-report:v2';
+  var OLD_REPORT_KEY = 'queryhub:last-report:v1';
   var SEV_LABEL = { erro: 'Erro', aviso: 'Aviso', info: 'Info', ignorado: 'Ignorado' };
+  var uidCounter = 0;
+
+  function uid() { return 'i' + Date.now().toString(36) + (++uidCounter).toString(36) + Math.random().toString(36).slice(2, 5); }
 
   function buildReport(an, source, counts) {
     var items = an.items.slice(), withWarn = 0;
@@ -632,13 +639,18 @@
       var warns = r.issues.filter(function (i) { return i.sev !== 'erro'; });
       if (warns.some(function (i) { return i.sev === 'aviso'; })) withWarn++;
       var id = r.finalId || r.q.id;
-      state.warnById[id] = warns;
       warns.forEach(function (w) {
         var it = stamp(Object.assign({}, w), r.path);
         it.queryId = id;
         it.queryName = r.q.name;
         items.push(it);
       });
+    });
+    items.forEach(function (it) {
+      if (!it.rid) it.rid = uid();
+      if (it.code === 'LISTA_EXPANDIDA') {            // aviso do arquivo: vale enquanto alguma consulta dele existir
+        it.queryIds = an.results.filter(function (r) { return r.path === it.path; }).map(function (r) { return r.finalId || r.q.id; });
+      }
     });
     var errorFiles = {};
     items.forEach(function (i) { if (i.sev === 'erro') errorFiles[i.path] = true; });
@@ -658,39 +670,88 @@
     };
   }
 
+  // Só o que ainda precisa de atenção: some o que foi dispensado e o que pertence a consultas excluídas
+  function activeItems() {
+    var r = state.report;
+    if (!r) return [];
+    var ids = {};
+    state.queries.forEach(function (q) { ids[q.id] = true; });
+    return r.items.filter(function (i) {
+      if (i.dismissed) return false;
+      if (i.queryId && !ids[i.queryId]) return false;
+      if (i.queryIds && !i.queryIds.some(function (id) { return ids[id]; })) return false;
+      return true;
+    });
+  }
+
+  function pendingCounts() {
+    var act = activeItems(), errFiles = {}, warnQ = {}, ignored = 0;
+    act.forEach(function (i) {
+      if (i.sev === 'erro') errFiles[i.path] = true;
+      else if (i.sev === 'aviso') warnQ[i.queryId || i.path] = true;
+      else if (i.sev === 'ignorado') ignored++;
+    });
+    return { erros: Object.keys(errFiles).length, avisos: Object.keys(warnQ).length, ignorados: ignored, items: act };
+  }
+
+  // Junta o envio novo com o que ainda estava pendente de envios anteriores
+  function registerReport(an, source, counts) {
+    var fresh = buildReport(an, source, counts);
+    var prev = state.report ? state.report.items : [];
+    var ids = {}, touched = {};
+    state.queries.forEach(function (q) { ids[q.id] = true; });
+    fresh.items.forEach(function (i) { touched[i.path] = true; });
+    an.results.forEach(function (r) { touched[r.path] = true; });      // arquivo reenviado e aceito resolve o erro antigo
+    var carried = prev.filter(function (i) {
+      return !i.dismissed && (i.sev === 'erro' || i.sev === 'aviso') && !touched[i.path] && (!i.queryId || ids[i.queryId]);
+    });
+    fresh.items = carried.concat(fresh.items);
+    state.report = fresh;
+    saveReport();
+    invalidateWarn();
+    updateReportButton();
+    return fresh;
+  }
+
   function saveReport() {
     var r = state.report;
-    if (!r) return;
+    if (!r) { try { localStorage.removeItem(REPORT_KEY); } catch (err) { /* ignora */ } return; }
     try {
       var slim = {
         id: r.id, createdAt: r.createdAt, source: r.source, totals: r.totals,
         items: r.items.slice(0, 3000).map(function (i) {
-          return { code: i.code, sev: i.sev, title: i.title, hint: i.hint, detail: String(i.detail || '').slice(0, 400), tech: String(i.tech || '').slice(0, 200), snippet: String(i.snippet || '').slice(0, 200), line: i.line, col: i.col, path: i.path, file: i.file, queryId: i.queryId, queryName: i.queryName };
+          return { rid: i.rid, code: i.code, sev: i.sev, title: i.title, hint: i.hint, detail: String(i.detail || '').slice(0, 400), tech: String(i.tech || '').slice(0, 200), snippet: String(i.snippet || '').slice(0, 200), line: i.line, col: i.col, path: i.path, file: i.file, queryId: i.queryId, queryIds: i.queryIds, queryName: i.queryName, dismissed: i.dismissed ? 1 : undefined };
         })
       };
       localStorage.setItem(REPORT_KEY, JSON.stringify(slim));
+      localStorage.removeItem(OLD_REPORT_KEY);
     } catch (err) { /* sem espaço: o relatório fica só na memória */ }
   }
 
   function loadReport() {
-    try { state.report = JSON.parse(localStorage.getItem(REPORT_KEY) || 'null'); } catch (err) { state.report = null; }
+    try { state.report = JSON.parse(localStorage.getItem(REPORT_KEY) || localStorage.getItem(OLD_REPORT_KEY) || 'null'); } catch (err) { state.report = null; }
+    if (state.report) state.report.items.forEach(function (it) { if (!it.rid) it.rid = uid(); });
     updateReportButton();
   }
 
+  // O botão só aparece enquanto houver erro ou aviso pendente
   function updateReportButton() {
     var btn = $('btnReport');
     if (!btn) return;
-    var r = state.report;
-    btn.classList.toggle('hidden', !r);
-    if (r) $('reportBadge').textContent = r.totals.comErro ? String(r.totals.comErro) : '';
-    if (r) $('reportBadge').classList.toggle('hidden', !r.totals.comErro);
+    var c = pendingCounts(), total = c.erros + c.avisos;
+    btn.classList.toggle('hidden', !total);
+    var badge = $('reportBadge');
+    badge.textContent = total ? String(total) : '';
+    badge.classList.toggle('hidden', !total);
+    badge.classList.toggle('count-badge--warn', !c.erros);
+    btn.title = c.erros || c.avisos ? (c.erros ? c.erros + ' arquivo(s) com erro e ' : '') + c.avisos + ' consulta(s) para conferir' : '';
   }
 
   function warningsFor(q) {
-    if (state.warnById[q.id]) return state.warnById[q.id];
-    var r = state.report;
-    if (!r) return [];
-    return r.items.filter(function (i) { return i.queryId === q.id && (i.sev === 'aviso' || i.sev === 'info'); });
+    var out = [], r = state.report;
+    if (r) r.items.forEach(function (i) { if (i.queryId === q.id && !i.dismissed && (i.sev === 'aviso' || i.sev === 'info')) out.push(i); });
+    (state.warnById[q.id] || []).forEach(function (w) { out.push(w); });
+    return out;
   }
 
   function reportTabOf(it) { return it.sev === 'info' || it.sev === 'aviso' ? 'aviso' : it.sev; }
@@ -706,21 +767,31 @@
 
   function openReport(tab) {
     if (!state.report) return;
-    if (tab) state.reportTab = tab;
+    var c = pendingCounts();
+    state.reportTab = tab || (c.erros ? 'erro' : (c.avisos ? 'aviso' : (state.reportTab || 'erro')));
     $('reportSearch').value = '';
     renderReport();
     openModal($('reportModal'));
   }
 
+  var TAB_INTRO = {
+    erro: 'Estes arquivos NÃO entraram na biblioteca. Veja "O que fazer", corrija o arquivo e envie de novo. Se for um arquivo que não importa, clique em "Dispensar".',
+    aviso: 'Estas consultas JÁ entraram, mas vale uma conferida. Abra cada uma, ajuste o que precisar e clique em "Já revisei". Ao salvar a consulta no editor, o aviso some sozinho.',
+    ignorado: 'Estes arquivos não são consultas e foram pulados. Não precisa fazer nada.'
+  };
+
   function rowHtml(it) {
     var cat = ISSUES[it.code] || {};
-    var h = '<div class="irow"><div class="irow__top"><code>' + esc(it.path || it.file || '') + '</code>';
+    var h = '<div class="irow"><div class="irow__top"><code>' + esc(it.path || it.file || '') + '</code><span class="irow__actions">';
     if (it.queryId && findQuery(it.queryId)) h += '<button type="button" class="link-btn" data-open-query="' + esc(it.queryId) + '">Abrir consulta</button>';
-    h += '</div><div class="irow__detail">' + esc(it.detail) + '</div>';
-    if (it.line) h += '<div class="irow__where">Linha ' + it.line + ', coluna ' + it.col + '</div>';
-    if (it.snippet) h += '<pre class="snippet">' + esc(it.snippet) + '</pre>';
-    if (it.hint && it.hint !== cat.hint) h += '<div class="irow__hint">' + esc(it.hint) + '</div>';
-    if (it.tech) h += '<div class="irow__tech">Mensagem técnica: ' + esc(it.tech) + '</div>';
+    if (it.sev === 'aviso' || it.sev === 'info') h += '<button type="button" class="link-btn" data-dismiss="' + esc(it.rid) + '">Já revisei</button>';
+    else if (it.sev === 'erro') h += '<button type="button" class="link-btn" data-dismiss="' + esc(it.rid) + '">Dispensar</button>';
+    h += '</span></div><div class="irow__detail">' + esc(it.detail) + '</div>';
+    if (it.snippet) {
+      h += '<div class="irow__where">' + (it.line ? 'Linha ' + it.line + ', coluna ' + it.col + '. ' : '') + 'O ponto exato do problema está entre ⟦ ⟧:</div><pre class="snippet">' + esc(it.snippet) + '</pre>';
+    }
+    if (it.hint && it.hint !== cat.hint) h += '<div class="irow__hint"><b>O que fazer:</b> ' + esc(it.hint) + '</div>';
+    if (it.tech) h += '<details class="irow__tech"><summary>Detalhe técnico</summary>' + esc(it.tech) + '</details>';
     return h + '</div>';
   }
 
@@ -729,8 +800,7 @@
     var body = det.querySelector('.igroup__body'), shown = Number(det.getAttribute('data-shown') || 0), step = 100;
     var more = body.querySelector('[data-more]');
     if (more) more.remove();
-    var html = list.slice(shown, shown + step).map(rowHtml).join('');
-    body.insertAdjacentHTML('beforeend', html);
+    body.insertAdjacentHTML('beforeend', list.slice(shown, shown + step).map(rowHtml).join(''));
     shown = Math.min(list.length, shown + step);
     det.setAttribute('data-shown', String(shown));
     if (shown < list.length) {
@@ -741,23 +811,23 @@
   function renderReport() {
     var r = state.report;
     if (!r) return;
-    var tab = state.reportTab || 'erro', t = r.totals;
-    $('reportSub').textContent = r.source + ' · ' + formatDate(r.createdAt);
+    var tab = state.reportTab || 'erro', c = pendingCounts(), t = r.totals || {};
+    $('reportSub').textContent = 'Último envio: ' + r.source + ' · ' + formatDate(r.createdAt) + ' · ' + (t.lidos || 0) + ' arquivo(s) lido(s), ' + (t.importadas || 0) + ' importada(s)';
 
     $('reportSummary').innerHTML = [
-      ['Arquivos lidos', t.lidos, ''], ['Importadas', t.importadas, 'ok'], ['Com aviso', t.comAviso, 'warn'],
-      ['Com erro', t.comErro, 'err'], ['Ignorados', t.ignorados, ''], ['Atualizadas', t.atualizadas, '']
-    ].map(function (c) { return '<div class="rsum rsum--' + c[2] + '"><b>' + c[1] + '</b><span>' + c[0] + '</span></div>'; }).join('');
+      ['Arquivos com erro', c.erros, c.erros ? 'err' : 'ok'], ['Consultas para conferir', c.avisos, c.avisos ? 'warn' : 'ok'], ['Arquivos pulados', c.ignorados, '']
+    ].map(function (x) { return '<div class="rsum rsum--' + x[2] + '"><b>' + x[1] + '</b><span>' + x[0] + '</span></div>'; }).join('');
 
     var counts = { erro: 0, aviso: 0, ignorado: 0 };
-    r.items.forEach(function (i) { counts[reportTabOf(i)]++; });
+    c.items.forEach(function (i) { counts[reportTabOf(i)]++; });
     document.querySelectorAll('.rtab').forEach(function (b) {
       b.classList.toggle('is-active', b.getAttribute('data-rtab') === tab);
       b.querySelector('em').textContent = counts[b.getAttribute('data-rtab')];
     });
+    $('reportIntro').textContent = TAB_INTRO[tab];
 
     var term = normalize($('reportSearch').value), groups = {}, order = [];
-    r.items.filter(function (i) {
+    c.items.filter(function (i) {
       if (reportTabOf(i) !== tab) return false;
       return !term || normalize([i.path, i.detail, i.title, i.code].join(' ')).indexOf(term) !== -1;
     }).forEach(function (i) {
@@ -768,22 +838,83 @@
     reportGroups = groups;
 
     var box = $('reportList');
+    var openCodes = {}, scrollTop = box.scrollTop, hadGroups = !!box.querySelector('details.igroup');
+    box.querySelectorAll('details.igroup[open]').forEach(function (d) { openCodes[d.getAttribute('data-code')] = true; });
     if (!order.length) {
-      box.innerHTML = '<p class="muted-text rempty">' + (term ? 'Nada encontrado para essa busca.' : tab === 'erro' ? 'Nenhum erro neste envio.' : tab === 'aviso' ? 'Nenhum aviso neste envio.' : 'Nenhum arquivo ignorado neste envio.') + '</p>';
+      var allDone = !c.erros && !c.avisos;
+      box.innerHTML = allDone && tab !== 'ignorado'
+        ? '<div class="rempty rok"><b>Tudo resolvido ✓</b><p>Não há erros nem consultas para conferir. Quando você excluir, corrigir ou revisar algo, a lista se atualiza sozinha.</p></div>'
+        : '<p class="muted-text rempty">' + (term ? 'Nada encontrado para essa busca.' : tab === 'erro' ? 'Nenhum erro pendente.' : tab === 'aviso' ? 'Nenhuma consulta para conferir.' : 'Nenhum arquivo pulado.') + '</p>';
       return;
     }
     box.innerHTML = order.map(function (code) {
       var d = ISSUES[code] || { title: code, meaning: '', hint: '', sev: 'erro' };
+      var bulkLabel = d.sev === 'erro' ? 'Dispensar todos' : 'Marcar todos como revisados';
       return '<details class="igroup" data-code="' + esc(code) + '" data-shown="0"><summary>' +
         '<span class="sev sev--' + d.sev + '">' + SEV_LABEL[d.sev] + '</span><strong>' + esc(d.title) + '</strong><em>' + groups[code].length + '</em></summary>' +
-        '<div class="igroup__body"><p class="igroup__meaning">' + esc(d.meaning) + '</p><p class="igroup__hint"><b>Como resolver:</b> ' + esc(d.hint) + '</p></div></details>';
+        '<div class="igroup__body"><p class="igroup__meaning"><b>O que significa:</b> ' + esc(d.meaning) + '</p>' +
+        '<p class="igroup__hint"><b>O que fazer:</b> ' + esc(d.hint) + '</p>' +
+        (d.sev === 'ignorado' ? '' : '<div class="igroup__actions"><button type="button" class="link-btn" data-dismiss-group="' + esc(code) + '">' + bulkLabel + ' (' + groups[code].length + ')</button></div>') +
+        '</div></details>';
     }).join('');
 
     box.querySelectorAll('details.igroup').forEach(function (det) {
       det.addEventListener('toggle', function () { if (det.open && !Number(det.getAttribute('data-shown'))) fillGroup(det); });
     });
+    var reopened = false;
+    box.querySelectorAll('details.igroup').forEach(function (det) {
+      if (openCodes[det.getAttribute('data-code')]) { det.open = true; reopened = true; }
+    });
     var firstGroup = box.querySelector('details.igroup');
-    if (firstGroup && (order.length <= 3 || term)) firstGroup.open = true;
+    if (!reopened && !hadGroups && firstGroup && (order.length <= 3 || term)) firstGroup.open = true;
+    box.scrollTop = scrollTop;
+  }
+
+  /* ----- Dispensar / marcar como revisado ----- */
+  function afterReportChange() {
+    saveReport();
+    invalidateWarn();
+    if ($('reportModal').open) renderReport();
+    updateReportButton();
+    renderReview();
+    if (state.review === 'warn') QH.renderList();
+  }
+
+  function dismissItem(rid) {
+    var r = state.report;
+    if (!r) return;
+    r.items.forEach(function (i) { if (i.rid === rid) i.dismissed = true; });
+    afterReportChange();
+  }
+
+  function dismissGroup(code) {
+    var tab = state.reportTab || 'erro';
+    activeItems().forEach(function (i) { if (i.code === code && reportTabOf(i) === tab) i.dismissed = true; });
+    afterReportChange();
+  }
+
+  function resolveFileErrors(path) {
+    var r = state.report, any = false;
+    if (!r) return;
+    r.items.forEach(function (i) { if (i.path === path && i.sev === 'erro' && !i.dismissed) { i.dismissed = true; any = true; } });
+    if (any) afterReportChange();
+  }
+
+  function dismissQuery(id) {
+    var r = state.report, any = false;
+    if (!r) return;
+    r.items.forEach(function (i) { if (i.queryId === id && !i.dismissed) { i.dismissed = true; any = true; } });
+    delete state.warnById[id];
+    if (any) afterReportChange();
+  }
+
+  function clearReport() {
+    var n = pendingCounts();
+    if (!n.erros && !n.avisos && !n.ignorados) { toast('Não há nada pendente.'); return; }
+    if (!window.confirm('Limpar a lista de pendências? As consultas continuam na biblioteca; só os avisos e erros deste relatório deixam de aparecer.')) return;
+    activeItems().forEach(function (i) { i.dismissed = true; });
+    afterReportChange();
+    toast('Lista de pendências limpa.');
   }
 
   function csvEscape(v) {
@@ -792,22 +923,21 @@
   }
 
   function reportCsv() {
-    var r = state.report;
-    if (!r) return;
-    var lines = [['arquivo', 'caminho', 'gravidade', 'codigo', 'mensagem', 'detalhe', 'como_resolver', 'linha', 'coluna', 'trecho'].join(';')];
-    r.items.forEach(function (i) {
-      lines.push([i.file, i.path, i.sev, i.code, i.title, i.detail, i.hint, i.line || '', i.col || '', i.snippet || ''].map(csvEscape).join(';'));
+    if (!state.report) return;
+    var lines = [['arquivo', 'caminho', 'tipo', 'codigo', 'o_que_aconteceu', 'detalhe', 'o_que_fazer', 'linha', 'coluna', 'trecho'].join(';')];
+    activeItems().forEach(function (i) {
+      lines.push([i.file, i.path, SEV_LABEL[i.sev] || i.sev, i.code, i.title, i.detail, i.hint, i.line || '', i.col || '', i.snippet || ''].map(csvEscape).join(';'));
     });
-    download('relatorio_importacao.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+    download('pendencias_importacao.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   }
 
   function reportCopy() {
     var r = state.report;
     if (!r) return;
-    var t = r.totals, lines = ['Relatório de importação – ' + r.source + ' (' + formatDate(r.createdAt) + ')',
-      t.lidos + ' arquivos lidos · ' + t.importadas + ' importadas · ' + t.comAviso + ' com aviso · ' + t.comErro + ' com erro · ' + t.ignorados + ' ignorados', ''];
-    r.items.filter(function (i) { return i.sev === 'erro'; }).forEach(function (i) {
-      lines.push('• ' + i.path + ' – ' + i.title + ': ' + i.detail + (i.line ? ' [linha ' + i.line + ']' : ''));
+    var c = pendingCounts(), lines = ['Pendências da importação – ' + r.source + ' (' + formatDate(r.createdAt) + ')',
+      c.erros + ' arquivo(s) com erro · ' + c.avisos + ' consulta(s) para conferir', ''];
+    c.items.filter(function (i) { return i.sev === 'erro'; }).forEach(function (i) {
+      lines.push('• ' + i.path + ' – ' + i.title + '. ' + i.detail + ' O que fazer: ' + i.hint);
     });
     if (!navigator.clipboard) { toast('Seu navegador não permite copiar automaticamente.'); return; }
     navigator.clipboard.writeText(lines.join('\n')).then(function () { toast('Resumo dos erros copiado.'); });
@@ -821,7 +951,7 @@
       groups[d.g].push(code);
     });
     $('guideBody').innerHTML = order.map(function (g) {
-      return '<h3 class="guide__group">' + esc(g) + '</h3><div class="guide__wrap"><table class="guide"><thead><tr><th>Tipo</th><th>Mensagem</th><th>O que significa</th><th>Como resolver</th></tr></thead><tbody>' +
+      return '<h3 class="guide__group">' + esc(g) + '</h3><div class="guide__wrap"><table class="guide"><thead><tr><th>Tipo</th><th>Mensagem</th><th>O que significa</th><th>O que fazer</th></tr></thead><tbody>' +
         groups[g].map(function (code) {
           var d = ISSUES[code];
           return '<tr><td><span class="sev sev--' + d.sev + '">' + SEV_LABEL[d.sev] + '</span></td><td><b>' + esc(d.title) + '</b><br><code>' + esc(code) + '</code></td><td>' + esc(d.meaning) + '</td><td>' + esc(d.hint) + '</td></tr>';
@@ -844,13 +974,6 @@
     return parts.join(' · ');
   }
 
-  function registerReport(an, source, counts) {
-    state.report = buildReport(an, source, counts);
-    saveReport();
-    updateReportButton();
-    return state.report;
-  }
-
   function finishBatch(an, source) {
     if (!an.results.length && !an.items.length) { setStatus('Nenhum arquivo para importar.'); return; }
     var counts = { added: 0, updated: 0 };
@@ -869,15 +992,16 @@
     var errs = an.items.filter(isError);
     if (!an.results.length) {
       var lines = errs.slice(0, 3).map(function (e) {
-        return e.title + '\n' + e.detail + (e.line ? ' [linha ' + e.line + ']' : '') + (e.snippet ? '\ntrecho: ' + e.snippet : '') + '\n\u2192 ' + e.hint;
+        return e.title + '\nO que aconteceu: ' + e.detail + (e.snippet ? '\nTrecho: ' + e.snippet : '') + '\nO que fazer: ' + e.hint;
       });
       if (!lines.length) lines = an.items.slice(0, 3).map(function (e) { return e.title + ': ' + e.detail; });
-      setStatus(lines.join('\n\n') + (lines.length ? '\n\n(O relatório completo está no botão "Relatório" no topo.)' : ''));
+      setStatus(lines.join('\n\n') + (lines.length ? '\n\n(Você também encontra isto no botão "Relatório", no topo da página.)' : ''));
       registerReport(an, describeSource(files), { added: 0, updated: 0 });
       return;
     }
     if (an.results.length === 1 && !an.results[0].keep && !errs.length) {
       var r = an.results[0];
+      resolveFileErrors(r.path);        // o arquivo agora está bom: some o erro antigo dele
       state.warnById[r.q.id] = r.issues.filter(function (i) { return i.sev !== 'erro'; });
       setStatus('');
       closeModal($('importModal'));
@@ -1142,7 +1266,7 @@
     state.queries.forEach(function (q) { idByFile[q.source_filename] = q.id; });
     an.results.forEach(function (r) { r.finalId = idByFile[r.q.source_filename] || r.q.id; });
     updatedResults.forEach(function (r) {
-      r.issues.push(mk('ATUALIZADA', 'Já existia uma consulta do arquivo "' + r.q.source_filename + '".'));
+      r.issues.push(mk('ATUALIZADA', 'Já existia uma consulta do arquivo "' + r.q.source_filename + '". Atualizei o conteúdo e mantive categorias, descrição e destaques.'));
     });
     return { added: a.added + b.added, updated: a.updated + b.updated };
   }
@@ -1154,14 +1278,13 @@
   function onlyOthers(q) { var c = q.categories || []; return !c.length || (c.length === 1 && c[0] === 'Outros'); }
   function isPending(q) { return !hasDesc(q) || onlyOthers(q); }
 
-  var warnCache = { id: null, set: {} };
+  var warnCache = null;
+  function invalidateWarn() { warnCache = null; }
   function warnSet() {
-    var r = state.report;
-    if (!r) return {};
-    if (warnCache.id === r.id) return warnCache.set;
+    if (warnCache) return warnCache;
     var set = {};
-    r.items.forEach(function (i) { if (i.sev === 'aviso' && i.queryId) set[i.queryId] = true; });
-    warnCache = { id: r.id, set: set };
+    activeItems().forEach(function (i) { if (i.sev === 'aviso' && i.queryId) set[i.queryId] = true; });
+    warnCache = set;
     return set;
   }
 
@@ -1221,6 +1344,7 @@
   }
 
   QH.afterRender = function () {
+    invalidateWarn();
     renderReview();
     renderPubBar();
     updateReportButton();
@@ -1474,6 +1598,7 @@
     }
 
     changed();
+    dismissQuery(q.id);                    // quem revisa e salva resolve os avisos desta consulta
     if (state.openId === q.id) QH.openDrawer(q.id);
 
     if (goNext && !ctx.isNew) {
@@ -1609,6 +1734,7 @@
     document.querySelectorAll('.rtab').forEach(function (b) {
       b.addEventListener('click', function () { state.reportTab = b.getAttribute('data-rtab'); renderReport(); });
     });
+    on('reportClear', 'click', clearReport);
     on('reportList', 'click', function (e) {
       var open = e.target.closest('[data-open-query]');
       if (open) {
@@ -1616,6 +1742,10 @@
         if (q) { closeModal($('reportModal')); openEditor(q, false); }
         return;
       }
+      var one = e.target.closest('[data-dismiss]');
+      if (one) { dismissItem(one.getAttribute('data-dismiss')); return; }
+      var grp = e.target.closest('[data-dismiss-group]');
+      if (grp) { dismissGroup(grp.getAttribute('data-dismiss-group')); return; }
       var more = e.target.closest('[data-more]');
       if (more) { var det = more.closest('details'); if (det) fillGroup(det); }
     });
@@ -1705,7 +1835,7 @@
   QH.admin = {
     inspectText: inspectText, runImport: runImport, applyImport: applyImport, buildReport: buildReport, ISSUES: ISSUES,
     computeDiff: computeDiff, undo: undo, makeBaseline: makeBaseline, getBaseline: function () { return baseline; },
-    undoDepth: function () { return undoStack.length; }, isPending: isPending
+    undoDepth: function () { return undoStack.length; }, isPending: isPending, pendingCounts: pendingCounts
   };
 
 })();

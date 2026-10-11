@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('app', '3.3.0');
+  if (window.QHBuild) window.QHBuild.report('app', '3.4.0');
 
   /* ---------- Configurações ---------- */
   var ADMIN = document.body.getAttribute('data-mode') === 'admin';

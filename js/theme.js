@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var BUILD = '3.3.0';
+  var BUILD = '3.4.0';
   var KEY = 'queryhub:theme';
   var root = document.documentElement;
   var query = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;

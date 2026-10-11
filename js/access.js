@@ -8,7 +8,7 @@
 
   var QH = window.QH;
   if (!QH || !QH.ADMIN) return;
-  if (window.QHBuild) window.QHBuild.report('access', '3.3.0');
+  if (window.QHBuild) window.QHBuild.report('access', '3.4.0');
 
   var $ = QH.$, on = QH.on, esc = QH.esc, normalize = QH.normalize, toast = QH.toast;
   var openModal = QH.openModal, closeModal = QH.closeModal;
