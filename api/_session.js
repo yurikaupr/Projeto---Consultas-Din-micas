@@ -27,7 +27,11 @@ export function audit(event, data) {
   console.log(JSON.stringify(Object.assign({ ts: new Date().toISOString(), event: event }, data || {})));
 }
 
-// Defesa extra contra CSRF: a requisição precisa vir do próprio site
+// Defesa extra contra CSRF: a requisição precisa vir do próprio site.
+// 1) Se houver Origin, ele TEM de bater com o host (bloqueia cross-site).
+// 2) Sem Origin, aceita só Sec-Fetch-Site same-origin/none (o navegador sempre
+//    envia esse cabeçalho em fetch() do próprio site; a página não consegue forjá-lo).
+// 3) Sem nenhum dos dois, recusa: não é uma chamada legítima do site no navegador.
 export function sameOrigin(req) {
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   const origin = req.headers.origin;
@@ -35,7 +39,7 @@ export function sameOrigin(req) {
     try { return new URL(origin).host === host; } catch (err) { return false; }
   }
   const site = req.headers['sec-fetch-site'];
-  return !site || site === 'same-origin' || site === 'none';
+  return site === 'same-origin' || site === 'none';
 }
 
 export async function createSession(user) {
