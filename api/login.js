@@ -1,6 +1,7 @@
 // Valida o token do Google NO SERVIDOR e só então cria a sessão.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { audit, createSession, isConfigured, listFromEnv, sameOrigin, sessionCookie } from './_session.js';
+import { audit, createSession, isConfigured, sameOrigin, sessionCookie } from './_session.js';
+import { decideLogin, loadAccess } from './_access.js';
 
 const GOOGLE_KEYS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
@@ -27,31 +28,19 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'invalid_token' });
   }
 
-  // 2) Regras de acesso
-  const domain = (process.env.ALLOWED_DOMAIN || 'magazord.com.br').toLowerCase();
-  const allowList = listFromEnv('ALLOWED_EMAILS');
-  const extras = listFromEnv('EXTRA_ALLOWED_EMAILS');
-  const admins = listFromEnv('ADMIN_EMAILS');
-  const blocked = listFromEnv('BLOCKED_EMAILS');
-
+  // 2) Regras de acesso: variáveis da Vercel + lista editada no painel admin
+  const cfg = await loadAccess();
   const email = String(payload.email || '').toLowerCase();
-  const verified = payload.email_verified === true;
+  const decision = decideLogin(cfg, { email: email, verified: payload.email_verified === true, hd: payload.hd });
 
-  // Com ALLOWED_EMAILS preenchida, só entra quem está na lista. Sem ela, vale o domínio inteiro.
-  // O campo "hd" só existe para contas Google Workspace do domínio.
-  const byRule = allowList.length
-    ? verified && allowList.includes(email)
-    : verified && String(payload.hd || '').toLowerCase() === domain && email.endsWith('@' + domain);
-  const isExtra = verified && extras.includes(email);
-  const isAdmin = verified && admins.includes(email);
-
-  if (blocked.includes(email) || (!byRule && !isExtra && !isAdmin)) {
-    audit('login_denied', { email: email });
+  if (!decision.allowed) {
+    audit('login_denied', { email: email, reason: decision.reason });
+    if (decision.reason === 'unavailable') return res.status(503).json({ error: 'access_unavailable' });
     return res.status(403).json({ error: 'domain_not_allowed' });
   }
 
   // 3) Cria a sessão (cookie assinado, HttpOnly)
-  const role = isAdmin ? 'admin' : 'viewer';
+  const role = decision.admin ? 'admin' : 'viewer';
   const token = await createSession({ email: email, name: payload.name, role: role });
   res.setHeader('Set-Cookie', sessionCookie(token));
   audit('login_ok', { email: email, role: role });

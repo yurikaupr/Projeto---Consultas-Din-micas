@@ -1,5 +1,8 @@
 // Utilitários de sessão compartilhados pelas rotas /api (arquivos com "_" não viram rotas)
 import { SignJWT, jwtVerify } from 'jose';
+import { canStay, isAdminEmail, listFromEnv, loadAccess } from './_access.js';
+
+export { listFromEnv };
 
 // O prefixo __Host- obriga o navegador a só aceitar o cookie via HTTPS, sem Domain e com Path=/
 export const COOKIE_NAME = '__Host-qh_session';
@@ -17,11 +20,6 @@ function secretKey() {
 
 export function isConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && secretKey());
-}
-
-// Lê uma variável com e-mails separados por vírgula
-export function listFromEnv(name) {
-  return (process.env[name] || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
 // Registro simples nos logs da Vercel (não grava tokens nem conteúdo das consultas)
@@ -61,16 +59,15 @@ export async function readSession(req) {
   }
 }
 
-// Exige administrador. O e-mail também é conferido na lista atual (ADMIN_EMAILS),
-// então remover alguém da variável revoga o acesso mesmo com sessão aberta.
+// Exige administrador. O papel vem da lista de acessos atual (variável da Vercel + painel),
+// e não do cookie: mudar a lista vale mesmo para quem já está com a sessão aberta.
 export async function requireAdmin(req, res) {
   const session = await readSession(req);
   if (!session) { res.status(401).json({ error: 'unauthorized' }); return null; }
   const email = String(session.email).toLowerCase();
-  const isAdmin = session.role === 'admin' &&
-    listFromEnv('ADMIN_EMAILS').includes(email) &&
-    !listFromEnv('BLOCKED_EMAILS').includes(email);
-  if (!isAdmin) { res.status(403).json({ error: 'forbidden' }); return null; }
+  const cfg = await loadAccess();
+  if (cfg.unavailable && !cfg.owners.has(email)) { res.status(503).json({ error: 'access_unavailable' }); return null; }
+  if (!canStay(cfg, email) || !isAdminEmail(cfg, email)) { res.status(403).json({ error: 'forbidden' }); return null; }
   return session;
 }
 
