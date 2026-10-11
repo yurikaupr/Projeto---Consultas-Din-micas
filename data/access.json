@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "mode": "domain",
+  "users": [
+    {
+      "email": "yurikaupr@gmail.com",
+      "name": "Yuri 2",
+      "role": "admin",
+      "added_by": "yuriklugpr@gmail.com",
+      "added_at": 1791739238876
+    }
+  ]
+}
