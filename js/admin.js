@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('admin', '3.2.0');
+  if (window.QHBuild) window.QHBuild.report('admin', '3.3.0');
 
   var QH = window.QH;
   if (!QH || !QH.ADMIN) return;
@@ -1268,11 +1268,11 @@
     return QH.fetchLibrary().then(function (list) { baseline = makeBaseline(list); saveDraft(); }).catch(function () { /* sem base: o resumo mostra só o total */ });
   }
 
-  function openPublishSummary() {
+  function openPublishSummary(force) {
     if (state.publishing) return;
     ensureBaseline().then(function () {
       var d = computeDiff(), total = state.queries.length;
-      if (!d.total) { toast('Não há alterações para publicar.'); return; }
+      if (!d.total && !force) { toast('Não há alterações para publicar. Para enviar tudo de novo, use "Republicar tudo" no menu ⋯.'); return; }
       var warn = $('pubWarn'), warnText = '';
       if (!total) warnText = 'ATENÇÃO: a biblioteca está VAZIA. Publicar vai apagar TODAS as consultas do site do time.';
       else if (baseline && d.removed.length >= 10 && d.removed.length / Math.max(1, Object.keys(baseline.sigs).length) >= 0.3) {
@@ -1283,7 +1283,11 @@
       var onlyIds = !d.unknown && !d.added.length && !d.removed.length && d.changed.length && d.changed.every(function (c) { return c.why.length === 1 && c.why[0] === 'ID'; });
       $('pubSub').textContent = onlyIds ? 'Esta publicação só atribui um número (ID) às consultas que já existiam. Nada mais muda para o time.' : 'Confira o que vai mudar. O site atualiza em cerca de 1 minuto.';
 
-      if (d.unknown) {
+      if (!d.total) {
+        $('pubSummary').innerHTML = '<div class="pubsum__box"><b>' + total + '</b><span>consultas serão reenviadas</span></div>';
+        $('pubList').innerHTML = '<div class="pubdiff__row">Nenhuma alteração pendente. A biblioteca inteira será enviada de novo, com os IDs. Use isto se o time não estiver vendo os números.</div>';
+        $('pubSub').textContent = 'Reenvio completo da biblioteca.';
+      } else if (d.unknown) {
         $('pubSummary').innerHTML = '<div class="pubsum__box"><b>' + total + '</b><span>consultas na biblioteca</span></div>';
         $('pubList').innerHTML = '<div class="pubdiff__row">Não foi possível comparar com a versão publicada. A biblioteca inteira será enviada.</div>';
       } else {
@@ -1326,7 +1330,12 @@
       saveDraft();
       closeModal($('publishModal'));
       QH.dataChanged();
-      toast('Publicado! O time verá as mudanças em cerca de 1 minuto, quando o deploy terminar.');
+      var localNums = state.queries.filter(function (q) { return q.num; }).length;
+      if (result.data.nums !== localNums) {
+        toast('Publicado, mas o servidor não gravou os IDs. Atualize o arquivo api/admin/publish.js no GitHub e use "Republicar tudo" no menu ⋯.', { ms: 14000 });
+      } else {
+        toast('Publicado! O time verá as mudanças em cerca de 1 minuto, quando o deploy terminar.');
+      }
     }).catch(function (err) {
       toast(err.message);
     }).then(function () { setPublishing(false); });
@@ -1569,8 +1578,9 @@
     bindDrop();
 
     on('btnImport', 'click', function () { switchTab('single'); setStatus(''); openModal($('importModal')); });
-    on('btnPublish', 'click', openPublishSummary);
-    on('btnPublishMenu', 'click', openPublishSummary);
+    on('btnPublish', 'click', function () { openPublishSummary(false); });
+    on('btnPublishMenu', 'click', function () { openPublishSummary(false); });
+    on('btnRepublish', 'click', function () { openPublishSummary(true); });
     on('pubConfirm', 'click', doPublish);
     on('pubBarUndo', 'click', undo);
     on('btnUndo', 'click', undo);

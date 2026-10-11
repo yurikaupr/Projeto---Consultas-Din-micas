@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('app', '3.2.0');
+  if (window.QHBuild) window.QHBuild.report('app', '3.3.0');
 
   /* ---------- Configurações ---------- */
   var ADMIN = document.body.getAttribute('data-mode') === 'admin';
@@ -154,6 +154,7 @@
 
   function closeModal(dlg) {
     if (!dlg || !dlg.open || dlg._closing) return;
+    if (dlg._beforeClose && dlg._beforeClose() === false) return;   // ex.: alterações não salvas
     if (reducedMotion()) { dlg.close(); return; }
     dlg._closing = true;
     dlg.classList.add('is-closing');

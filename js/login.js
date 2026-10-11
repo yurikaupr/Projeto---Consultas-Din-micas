@@ -17,7 +17,11 @@
       if (res.status === 403) {
         showError('Esta conta não tem acesso. Entre com seu e-mail corporativo da Magazord.');
       } else if (res.status === 503) {
-        showError('O acesso ainda não foi configurado no servidor.');
+        res.json().then(function (d) {
+          showError(d && d.error === 'access_unavailable'
+            ? 'Não foi possível conferir as permissões agora. Tente de novo em instantes.'
+            : 'O acesso ainda não foi configurado no servidor.');
+        }).catch(function () { showError('O acesso ainda não foi configurado no servidor.'); });
       } else {
         showError('Não foi possível validar o login. Tente novamente.');
       }

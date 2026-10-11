@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var BUILD = '3.2.0';
+  var BUILD = '3.3.0';
   var KEY = 'queryhub:theme';
   var root = document.documentElement;
   var query = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -68,7 +68,7 @@
     var css = (getComputedStyle(root).getPropertyValue('--qh-build') || '').replace(/["'\s]/g, '');
     if (css !== BUILD) bad.push('css/style.css (' + (css ? 'versão ' + css : 'antigo ou não carregou') + ')');
     if (root.getAttribute('data-build') !== BUILD) bad.push('a página HTML (' + (root.getAttribute('data-build') ? 'versão ' + root.getAttribute('data-build') : 'antiga') + ')');
-    ['app', 'admin', 'login'].forEach(function (name) {
+    ['app', 'admin', 'access', 'login'].forEach(function (name) {
       if (document.querySelector('script[src*="js/' + name + '.js"]') && name !== 'login' && seen[name] !== BUILD) {
         bad.push('js/' + name + '.js (' + (seen[name] ? 'versão ' + seen[name] : 'antigo ou não carregou') + ')');
       }
