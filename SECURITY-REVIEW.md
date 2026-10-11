@@ -130,6 +130,72 @@ QH_COOKIE='__Host-qh_session=SEU_TOKEN_AQUI' bash pentest.sh https://queryhub-nu
 
 ---
 
+## 4b. Testes de burla executados ao vivo (resultados reais)
+
+Rodados contra `https://queryhub-nu.vercel.app` em 2026-10-11, sem causar dano.
+**Todas as tentativas falharam** — a camada técnica não foi burlável de fora.
+
+| Vetor testado | Tentativa | Resultado |
+|---|---|---|
+| **Forjar cookie de sessão** | JWT `alg:none` (sem assinatura) | `401` ❌ não passa |
+| **Segredo de sessão fraco** | 11 segredos comuns assinando JWT HS256 | `401` em todos ❌ |
+| **Acesso sem login ao banco de consultas** | `/data/queries.json` | `401` ❌ |
+| **Normalização de path** | `//`, `/./`, `/../`, `%2e`, `%252e`, maiúsculas, `%00`, `;.css`, `#.css`, barra final | `401`/`404`/`400`; o `308` do `//` termina em `401` ❌ |
+| **Esconder `access.json`** | variações de encoding/rota | `404`/`401` ❌ |
+| **Método HTTP alternativo** | HEAD, OPTIONS, PUT, DELETE, TRACE | `401` (TRACE `405`) ❌ |
+| **Open redirect** | `?redirect=`, `?next=https://evil` | ignorado; vai sempre p/ `/login.html` ❌ |
+| **Cabeçalhos forjados** | `X-Forwarded-Host`, `X-Forwarded-For`, `Sec-Fetch-Site` falsos | `401` ❌ |
+| **CSRF cross-site** | POST login com `Origin: evil.example` | `403 bad_origin` ❌ |
+| **Token Google falso** | credential inválido em `/api/login` | `401 invalid_token` ❌ |
+| **Vazar código-fonte** | `_session.js`, `_access.js`, `middleware.js`, `.env`, `.git/config` | `401` (não servidos) ❌ |
+
+**Conclusão:** de uma posição não autenticada, o site é, na prática,
+**inquebrável** com a tecnologia atual. Não há SQL, não há IDOR, não há XSS
+explorável, não há forja de sessão, não há bypass de path.
+
+## 4c. O único caminho que sobra: a conta Google legítima (engenharia social)
+
+Como a porta técnica está fechada, o atacante realista mira a **conta Google**
+de alguém que já tem acesso. Isto **não é uma falha de código** — é o limite do
+modelo "entre com Google". Não testei isso com pessoas reais (seria phishing de
+verdade contra funcionários — fora de qualquer teste ético). A análise:
+
+1. **[ALTO] Qualquer conta `@magazord.com.br` vira "viewer" (modo `domain`).**
+   Hoje, basta ter uma conta do domínio para ler **todas** as consultas
+   (colunas/estrutura — exatamente o seu medo). Se um funcionário qualquer cair
+   num phishing, o atacante lê tudo.
+   - **Mitigação forte:** mude para **modo "somente lista"** (variável
+     `ALLOWED_EMAILS` na Vercel, ou o modo "lista" no painel admin). Assim só
+     e-mails nomeados entram — não "qualquer um do domínio".
+   - Exija **2FA/passkey para todos** que acessam (você já tem nas suas contas;
+     o elo é quem mais tem acesso).
+
+2. **[ALTO] Comprometer um ADMIN = controle total.** O atacante publicaria
+   consultas falsas e mudaria a lista de acessos.
+   - Mantenha o conjunto de admins **mínimo** e só com contas corporativas.
+   - **Remova o Gmail pessoal do admin** (ver 2.1) — é o alvo mais fácil.
+   - Admins com **chave de segurança/passkey** (2FA resistente a phishing).
+
+3. **[MÉDIO] Replay de token / página de login falsa com seu `client_id`.**
+   O `client_id` é público (aparece em `/api/config` — inevitável no GIS). O
+   servidor fixa o `audience` e o domínio, então um token de conta não
+   corporativa não passa. Para fechar de vez:
+   - No **Google Cloud Console → Credenciais OAuth**, confirme que *Authorized
+     JavaScript origins* / *redirect URIs* estão restritos ao seu domínio (só
+     `https://queryhub-nu.vercel.app`). Assim o botão Google só funciona no seu
+     site.
+   - No **Google Workspace admin**, restrinja apps de terceiros (evita *consent
+     phishing* que levaria ao caso 1/2).
+
+4. **[BAIXO] Spear-phishing pelo fluxo "pedir ajuste".** O e-mail
+   `yuri.klug@magazord.com.br` fica no código. Impacto baixo; apenas esteja
+   ciente de e-mails se passando por esse fluxo.
+
+**Resumo do risco residual:** com a tecnologia atual, invadir "o site" exige
+invadir **uma conta Google autorizada**. Os dois passos que mais reduzem isso:
+(a) **modo lista** em vez de "qualquer um do domínio"; (b) **2FA/passkey + só
+contas corporativas no admin**.
+
 ## 5. O que fica como decisão sua (fora do código)
 - Tirar o Gmail pessoal do admin / usar `@magazord.com.br` em `ADMIN_EMAILS`.
 - Ligar Vercel Firewall + Rate Limiting (resposta ao DDoS/força bruta).
