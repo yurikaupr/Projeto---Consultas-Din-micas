@@ -1,11 +1,26 @@
 // Valida o token do Google NO SERVIDOR e só então cria a sessão.
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { audit, createSession, isConfigured, sameOrigin, sessionCookie } from './_session.js';
-import { appendAudit, decideLogin, loadAccess } from './_access.js';
+import { decideLogin, loadAccess, recordAudit } from './_access.js';
 
 function clientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
   return (Array.isArray(fwd) ? fwd[0] : String(fwd || '')).split(',')[0].trim();
+}
+
+// Limite por instância e por IP: blinda o /api/login (rota pública) contra
+// replay/flood. Não é o único freio — o log é enfileirado e a Vercel absorve
+// volume — mas levanta a barra de graça. Janela fixa de 1 minuto.
+const RL = new Map();
+const RL_MAX = 30, RL_WINDOW = 60000;
+function rateLimited(ip) {
+  if (!ip) return false;
+  const now = Date.now();
+  if (RL.size > 5000) { for (const [k, v] of RL) { if (now >= v.resetAt) RL.delete(k); } }
+  let e = RL.get(ip);
+  if (!e || now >= e.resetAt) { e = { count: 0, resetAt: now + RL_WINDOW }; RL.set(ip, e); }
+  e.count++;
+  return e.count > RL_MAX;
 }
 
 const GOOGLE_KEYS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -17,6 +32,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   if (!sameOrigin(req)) return res.status(403).json({ error: 'bad_origin' });
   if (!isConfigured()) return res.status(503).json({ error: 'not_configured' });
+
+  // Freio de abuso antes de qualquer trabalho pesado (verificação do token)
+  if (rateLimited(clientIp(req))) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'rate_limited' }); }
 
   const credential = req.body && req.body.credential;
   if (typeof credential !== 'string' || !credential) return res.status(400).json({ error: 'missing_credential' });
@@ -40,7 +58,8 @@ export default async function handler(req, res) {
 
   if (!decision.allowed) {
     audit('login_denied', { email: email, reason: decision.reason });
-    await appendAudit({ ts: new Date().toISOString(), event: 'login_denied', email: email, role: null, detail: decision.reason, ip: clientIp(req) });
+    // Enfileira (NÃO bloqueia, NÃO faz commit por requisição): rota pública.
+    recordAudit({ ts: new Date().toISOString(), event: 'login_denied', email: email, role: null, detail: decision.reason, ip: clientIp(req) });
     if (decision.reason === 'unavailable') return res.status(503).json({ error: 'access_unavailable' });
     return res.status(403).json({ error: 'domain_not_allowed' });
   }
@@ -50,6 +69,6 @@ export default async function handler(req, res) {
   const token = await createSession({ email: email, name: payload.name, role: role });
   res.setHeader('Set-Cookie', sessionCookie(token));
   audit('login_ok', { email: email, role: role });
-  await appendAudit({ ts: new Date().toISOString(), event: 'login_ok', email: email, role: role, detail: 'entrou', ip: clientIp(req) });
+  recordAudit({ ts: new Date().toISOString(), event: 'login_ok', email: email, role: role, detail: 'entrou', ip: clientIp(req) });
   return res.status(200).json({ ok: true, email: email, role: role });
 }

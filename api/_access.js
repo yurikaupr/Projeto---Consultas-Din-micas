@@ -251,42 +251,87 @@ async function ensureBranch(repo, branch, h) {
   return mk.ok || mk.status === 422;   // 422 = já existe
 }
 
-// Registra um evento (best-effort: nunca quebra a requisição principal)
-export async function appendAudit(entry) {
+// ---- Anti-abuso do log -------------------------------------------------
+// Um evento NÃO vira um commit. Os eventos entram em um buffer por instância e
+// são gravados em LOTE, no máximo ~1 commit a cada AUDIT_MIN_INTERVAL. Assim um
+// flood em /api/login (rota pública) não vira flood de commits nem gasta o
+// GITHUB_TOKEN compartilhado com o controle de acesso. Gravação é best-effort:
+// nunca bloqueia nem quebra a requisição principal.
+let auditBuffer = [];
+let auditLastFlush = 0;
+let auditFlushing = false;
+const AUDIT_MIN_INTERVAL = 20000;   // no máx. ~1 commit a cada 20s por instância
+const AUDIT_BUFFER_MAX = 300;       // teto de eventos guardados em memória
+
+// Ao estourar o teto, descarta primeiro os login_denied mais antigos (o ruído
+// de um flood), preservando login_ok/publish_ok/access_updated (anti-forense).
+function trimBuffer() {
+  if (auditBuffer.length <= AUDIT_BUFFER_MAX) return;
+  const important = auditBuffer.filter((e) => e.event !== 'login_denied');
+  const denied = auditBuffer.filter((e) => e.event === 'login_denied');
+  const keepDenied = Math.max(0, AUDIT_BUFFER_MAX - important.length);
+  auditBuffer = important.concat(denied.slice(denied.length - keepDenied)).slice(-AUDIT_BUFFER_MAX);
+}
+
+// Lê a lista atual, acrescenta o lote e grava em 1 commit.
+async function commitAudit(entries) {
   const repo = process.env.GITHUB_REPO, token = process.env.GITHUB_TOKEN;
-  if (!repo || !token || !auditEnabled()) return;
+  if (!repo || !token || !entries.length) return;
   const branch = auditBranch();
   const h = ghHeaders();
   const api = 'https://api.github.com/repos/' + repo + '/contents/' + AUDIT_PATH;
-  try {
-    if (!(await ensureBranch(repo, branch, h))) return;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      let sha = null, list = [];
-      const get = await fetch(api + '?ref=' + encodeURIComponent(branch), { headers: h });
-      if (get.ok) {
-        const data = await get.json();
-        sha = data.sha || null;
-        try { list = JSON.parse(decodeBase64(data.content || '')); } catch (e) { list = []; }
-        if (!Array.isArray(list)) list = [];
-      } else if (get.status !== 404) {
-        return;
-      }
-      list.push(entry);
-      if (list.length > MAX_AUDIT) list = list.slice(list.length - MAX_AUDIT);
-      const body = {
-        message: 'log: ' + entry.event + (entry.email ? ' ' + entry.email : ''),
-        content: encodeBase64(JSON.stringify(list)),
-        branch: branch
-      };
-      if (sha) body.sha = sha;
-      const put = await fetch(api, { method: 'PUT', headers: h, body: JSON.stringify(body) });
-      if (put.ok) return;
-      if (put.status !== 409 && put.status !== 422) return;
+  if (!(await ensureBranch(repo, branch, h))) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let sha = null, list = [];
+    const get = await fetch(api + '?ref=' + encodeURIComponent(branch), { headers: h });
+    if (get.ok) {
+      const data = await get.json();
+      sha = data.sha || null;
+      try { list = JSON.parse(decodeBase64(data.content || '')); } catch (e) { list = []; }
+      if (!Array.isArray(list)) list = [];
+    } else if (get.status !== 404) {
+      return;
     }
-  } catch (err) {
-    // silencioso de propósito: log é secundário
+    list = list.concat(entries);
+    if (list.length > MAX_AUDIT) list = list.slice(list.length - MAX_AUDIT);
+    const body = {
+      message: 'log: +' + entries.length + ' evento(s)',
+      content: encodeBase64(JSON.stringify(list)),
+      branch: branch
+    };
+    if (sha) body.sha = sha;
+    const put = await fetch(api, { method: 'PUT', headers: h, body: JSON.stringify(body) });
+    if (put.ok) return;
+    if (put.status !== 409 && put.status !== 422) return;
   }
 }
+
+async function flushAudit() {
+  if (auditFlushing || !auditBuffer.length) return;
+  auditFlushing = true;
+  auditLastFlush = Date.now();
+  const batch = auditBuffer;
+  auditBuffer = [];
+  try { await commitAudit(batch); }
+  catch (err) { /* best-effort: log é secundário */ }
+  finally { auditFlushing = false; }
+}
+
+// Registra um evento. Por padrão ENFILEIRA (flush em lote, no máx. ~1 commit/20s
+// por instância) e não bloqueia a resposta. opts.immediate grava na hora — use
+// só em ações raras e autenticadas (publicar, mudar acessos), nunca no login.
+export async function recordAudit(entry, opts) {
+  const repo = process.env.GITHUB_REPO, token = process.env.GITHUB_TOKEN;
+  if (!repo || !token || !auditEnabled()) return;
+  auditBuffer.push(entry);
+  trimBuffer();
+  if (opts && opts.immediate) { await flushAudit(); return; }
+  // Flood de login só enche o buffer (com teto); o commit sai no máx. 1x/20s.
+  if (Date.now() - auditLastFlush >= AUDIT_MIN_INTERVAL) { flushAudit(); }
+}
+
+// Compat: ações autenticadas e raras gravam imediatamente.
+export async function appendAudit(entry) { return recordAudit(entry, { immediate: true }); }
 
 // Lê os últimos eventos (mais recentes primeiro). Só chamado por rota de master.
 export async function loadAuditLog(limit) {

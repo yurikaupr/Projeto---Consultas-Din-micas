@@ -246,3 +246,48 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhu
 curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/logs     # espere 403
 curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/status   # espere 403
 ```
+
+---
+
+## 7. Auditoria adversarial do próprio RBAC (e correção)
+
+Rodei uma auditoria com 5 lentes independentes + verificação adversarial (cada
+achado teve de ser confirmado tentando refutá-lo no código real).
+
+### 7.1 Achado confirmado (introduzido por mim e já corrigido)
+**DoS/abuso via log no `/api/login` (rota pública).** A versão anterior deste
+trabalho gravava o log com `await appendAudit(...)` **a cada login negado**.
+Como `/api/login` é público e o `GITHUB_TOKEN` é compartilhado com o controle de
+acesso, um atacante com qualquer token Google válido poderia repetir logins
+negados e, a cada um, disparar ~3 chamadas ao GitHub — esgotando a cota
+(derrubando publicação/edição de acessos e, em instâncias frias, 503 geral) e
+poluindo/evacuando o log. Severidade: alta.
+
+**Correção aplicada:**
+- O log agora é **enfileirado e gravado em lote** (`recordAudit`), no máximo
+  **~1 commit a cada 20s por instância**; o login **não espera** o GitHub. Um
+  flood vira, no máximo, 1 commit por janela — não 1 por requisição.
+- Ao estourar o teto do buffer, descartam-se primeiro os `login_denied` (ruído),
+  **preservando** `login_ok`/`publish_ok`/`access_updated` (anti-forense).
+- Ações autenticadas e raras (publicar, mudar acessos) gravam **na hora**
+  (`appendAudit` = `recordAudit` immediate).
+- **Rate limit** por IP no `/api/login` (30/min por instância → 429).
+- Prova: `node test/audit.test.mjs` (500 eventos ⇒ ≤1 commit; immediate grava;
+  importantes preservados; nada de token/segredo no log).
+
+### 7.2 Endurecimento extra (defesa em profundidade)
+- `middleware.js`: decide bloqueio/perfil sobre o caminho **normalizado**
+  (decodificado + minúsculas), fechando truques de %-encoding/maiúsculas; e
+  passa a 404 também `/data/audit-log.json`.
+
+### 7.3 Achados descartados na verificação
+- "Viewer leria `/data/audit-log.json`": **falso** por padrão — o log vive numa
+  branch separada que a Vercel não publica; o arquivo não existe no deploy
+  (mesmo assim adicionei o 404 por garantia).
+- "Log no repo vaza dados": **falso** — repositório privado; `access.json` já
+  continha e-mails/papéis. O log só acrescenta IP/horário, sem token.
+
+### 7.4 Testes
+- `node test/access.test.mjs` — 59 verificações da matriz (perfis, domínio, modo
+  lista, falha-fechada, separação master × admin nas rotas, inclusive `status`).
+- `node test/audit.test.mjs` — 6 verificações da defesa anti-abuso do log.

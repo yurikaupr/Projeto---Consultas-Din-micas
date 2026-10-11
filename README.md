@@ -45,6 +45,7 @@ middleware.js               Exige sessão; /admin exige painel; usuários/logs e
 data/queries.json           Biblioteca publicada
 data/access.json            Lista de acessos (editada pelo master)
 test/access.test.mjs        Testes da matriz de acesso (node)
+test/audit.test.mjs         Testes anti-abuso do log (node)
 vercel.json                 Cabeçalhos de segurança e cache
 ```
 
@@ -90,4 +91,5 @@ Depois de criar ou alterar variáveis, faça **Redeploy**.
 - CSP restritiva, HSTS (`includeSubDomains`/`preload`), COOP, X-Frame-Options, nosniff e sem referrer. `/data/*` com `no-store`. Nenhum segredo no navegador.
 - **Logs de acesso** (login, login negado, publicação, mudança de acessos) ficam em `data/audit-log.json` numa branch separada; só master vê. Nunca guardam token nem conteúdo de consulta.
 - Para revogar: `BLOCKED_EMAILS` ou o perfil "Bloqueado" (uma pessoa), ou troque o `SESSION_SECRET` (todos).
-- Testes da matriz de acesso: `node test/access.test.mjs`.
+- Proteções de abuso: rate limit por IP no `/api/login` (429) e logs gravados em lote (no máx. ~1 commit/20s por instância), para que um flood de logins não gaste a cota do GitHub.
+- Testes: `node test/access.test.mjs` (matriz de acesso) e `node test/audit.test.mjs` (anti-abuso do log).
