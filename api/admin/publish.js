@@ -28,20 +28,27 @@ function github(path, options) {
   });
 }
 
-// Mantém só os campos conhecidos de cada consulta
+// Mantém só os campos conhecidos de cada consulta (inclusive o número/ID e a data de atualização)
 function sanitize(list) {
-  return list.map((q) => ({
-    id: String(q.id),
-    name: String(q.name),
-    categories: Array.isArray(q.categories) ? q.categories.map(String).slice(0, 3) : ['Outros'],
-    description: String(q.description || ''),
-    source_filename: String(q.source_filename || ''),
-    columns: Array.isArray(q.columns) ? q.columns : [],
-    primary_columns: Array.isArray(q.primary_columns) ? q.primary_columns : [],
-    required_filters: Array.isArray(q.required_filters) ? q.required_filters : [],
-    created_at: Number(q.created_at) || Date.now(),
-    raw_json: q.raw_json
-  }));
+  const usedNums = new Set();
+  return list.map((q) => {
+    let num = Number.isInteger(q.num) && q.num > 0 && !usedNums.has(q.num) ? q.num : undefined;
+    if (num) usedNums.add(num);
+    return {
+      id: String(q.id),
+      num: num,
+      name: String(q.name),
+      categories: Array.isArray(q.categories) ? q.categories.map(String).slice(0, 3) : ['Outros'],
+      description: String(q.description || ''),
+      source_filename: String(q.source_filename || ''),
+      columns: Array.isArray(q.columns) ? q.columns : [],
+      primary_columns: Array.isArray(q.primary_columns) ? q.primary_columns : [],
+      required_filters: Array.isArray(q.required_filters) ? q.required_filters : [],
+      created_at: Number(q.created_at) || Date.now(),
+      updated_at: Number(q.updated_at) || undefined,
+      raw_json: q.raw_json
+    };
+  });
 }
 
 async function currentSha(repo, branch) {
@@ -88,7 +95,9 @@ export default async function handler(req, res) {
   const valid = list.every((q) => q && q.id && q.name && q.raw_json && typeof q.raw_json === 'object');
   if (!valid) return res.status(400).json({ error: 'invalid_library' });
 
-  const content = Buffer.from(JSON.stringify(sanitize(list)), 'utf8').toString('base64');
+  const clean = sanitize(list);
+  const numbered = clean.filter((q) => q.num).length;
+  const content = Buffer.from(JSON.stringify(clean), 'utf8').toString('base64');
   const message = 'Atualiza consultas (' + list.length + ') por ' + session.email;
 
   // 2) Faz o commit (tenta de novo se o arquivo mudou no meio do caminho)
@@ -102,7 +111,7 @@ export default async function handler(req, res) {
       if (put.ok) {
         const data = await put.json();
         audit('publish_ok', { email: session.email, count: list.length, commit: data.commit && data.commit.sha });
-        return res.status(200).json({ ok: true, count: list.length, commit: data.commit && data.commit.sha });
+        return res.status(200).json({ ok: true, count: list.length, nums: numbered, commit: data.commit && data.commit.sha });
       }
       if (put.status !== 409 && put.status !== 422) {
         audit('publish_failed', { email: session.email, status: put.status });
