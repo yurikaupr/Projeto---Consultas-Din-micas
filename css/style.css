@@ -7,7 +7,7 @@
   color-scheme: light;
 
   /* Marca Magazord */
-  --qh-build: "3.3.0";   /* versão do visual (conferida pelo script) */
+  --qh-build: "3.4.0";   /* versão do visual (conferida pelo script) */
   --blue-500: #2754d7; --blue-700: #173b9d;
   --red-500: #ee6757;
   --yellow-500: #f4dc55;
@@ -542,7 +542,7 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
 .pubwarn { padding: 10px 12px; border-left: 4px solid var(--red-500); border-radius: 6px; background: var(--danger-tint); font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
 
 /* ---------- Relatório de importação ---------- */
-.rsummary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.rsummary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .rsum { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
 .rsum b { display: block; font-size: 22px; letter-spacing: -0.03em; }
 .rsum span { font-size: 11px; color: var(--muted); }
@@ -641,7 +641,6 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
   .container { padding: 0 18px; }
   .toolbar--admin { grid-template-columns: 1fr 1fr; }
   .toolbar--admin .search { grid-column: 1 / -1; }
-  .rsummary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cat-picker { grid-template-columns: 1fr 1fr; }
 }
 
@@ -701,7 +700,6 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
   .col-row { grid-template-columns: 22px 1fr; }
   .col-row small { grid-column: 2; }
   .field__row { grid-template-columns: 1fr; }
-  .rsummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rsearch { width: 100%; }
   .rlist, .guide-body { max-height: 50vh; }
   .pubsum { grid-template-columns: 1fr; }
@@ -823,3 +821,18 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
   .acc-add input, .acc-add select { height: 44px; }
   .acc-list { max-height: 40vh; }
 }
+
+/* ---------- Pendências da importação (linguagem simples) ---------- */
+.report-intro { margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid var(--accent-text); border-radius: 4px; background: var(--accent-tint); font-size: 12px; line-height: 1.55; }
+.count-badge--warn { background: var(--warn-badge); }
+.irow__actions { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.irow__actions .link-btn { padding: 4px 6px; font-size: 12px; }
+.igroup__actions { display: flex; }
+.igroup__actions .link-btn { padding: 4px 0; font-size: 12px; }
+.igroup__meaning b, .igroup__hint b, .irow__hint b { font-weight: 700; }
+.irow__tech { font-size: 11px; color: var(--muted); }
+.irow__tech summary { cursor: pointer; }
+.rok { padding: 28px 12px; }
+.rok b { display: block; margin-bottom: 4px; font-size: 16px; color: var(--ok-text); }
+.rok p { font-size: 13px; color: var(--muted); }
+@media (max-width: 720px) { .rsummary .rsum b { font-size: 20px; } .rsummary .rsum span { font-size: 10px; } .irow__top { flex-wrap: wrap; } }
