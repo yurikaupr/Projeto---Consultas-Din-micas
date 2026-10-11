@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-build="3.2.0">
+<html lang="pt-BR" data-build="3.3.0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="js/theme.js?v=3.2.0"></script>
+  <script src="js/theme.js?v=3.3.0"></script>
   <style>/* proteção: mesmo com um CSS antigo, o fundo não escurece e os ícones não explodem */.overlay{opacity:0;visibility:hidden}.overlay.is-open{opacity:1;visibility:visible}.theme-btn .ico{display:none;width:18px;height:18px}:root[data-theme-mode=auto] .theme-btn .ico-auto,:root[data-theme-mode=light] .theme-btn .ico-light,:root[data-theme-mode=dark] .theme-btn .ico-dark{display:block}</style>
-  <link rel="stylesheet" href="css/style.css?v=3.2.0">
+  <link rel="stylesheet" href="css/style.css?v=3.3.0">
 </head>
 <body data-mode="admin">
 
@@ -41,6 +41,8 @@
             <a class="menu__item" role="menuitem" href="./">Ver como time</a>
             <button type="button" class="menu__item" role="menuitem" id="btnUndo">Desfazer última ação</button>
             <button type="button" class="menu__item" role="menuitem" id="btnPublishMenu">Publicar alterações…</button>
+            <button type="button" class="menu__item" role="menuitem" id="btnRepublish">Republicar tudo…</button>
+            <button type="button" class="menu__item" role="menuitem" id="menuAccess">Acessos e permissões…</button>
             <button type="button" class="menu__item" role="menuitem" id="menuGuide">Guia de mensagens</button>
             <div class="menu__sep"></div>
             <button type="button" class="menu__item menu__item--danger" role="menuitem" id="btnDiscard">Descartar rascunho</button>
@@ -134,7 +136,7 @@
     </div>
   </main>
 
-  <footer class="site-footer">QueryHub v3.2.0</footer>
+  <footer class="site-footer">QueryHub v3.3.0</footer>
 
   <!-- ========== Barra de seleção ========== -->
   <div class="bulk hidden" id="bulkBar">
@@ -380,6 +382,63 @@
     </div>
   </dialog>
 
+
+  <!-- ========== Acessos e permissões ========== -->
+  <dialog class="modal modal--xl" id="accessModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Acessos e permissões</h2>
+        <p class="modal__sub">Quem pode entrar e quem administra o QueryHub. As mudanças valem em até 1 minuto.</p>
+      </div>
+      <button type="button" class="icon-btn" data-close="accessModal" aria-label="Fechar">×</button>
+    </div>
+
+    <section class="acc-section">
+      <h3 class="acc-title">Quem pode consultar</h3>
+      <div class="acc-modes">
+        <label class="check check--block"><input type="radio" name="accMode" value="domain"><span>Toda a empresa<small>Qualquer conta @<span id="accDomain"></span> entra para consultar.</small></span></label>
+        <label class="check check--block"><input type="radio" name="accMode" value="list"><span>Somente pessoas da lista<small>Só entra quem estiver na lista abaixo.</small></span></label>
+      </div>
+      <p class="acc-note" id="accModeInfo"></p>
+      <p class="acc-note acc-note--warn hidden" id="accForced"></p>
+    </section>
+
+    <section class="acc-section">
+      <div class="acc-head-row">
+        <h3 class="acc-title">Pessoas e permissões <span class="acc-count" id="accSummary"></span></h3>
+        <input type="search" class="mini-input" id="accFilter" placeholder="Buscar pessoa" aria-label="Buscar pessoa">
+      </div>
+      <p class="acc-legend"><b>Administrador</b> acessa o painel e publica. <b>Consulta</b> só consulta e baixa (use para liberar alguém de fora da empresa). <b>Bloqueado</b> não entra, mesmo sendo da empresa.</p>
+      <div class="acc-list" id="accList"></div>
+    </section>
+
+    <section class="acc-section acc-addbox">
+      <h3 class="acc-title">Adicionar pessoa</h3>
+      <div class="acc-add">
+        <input type="text" id="accNewName" placeholder="Nome (opcional)" maxlength="80" aria-label="Nome da pessoa">
+        <input type="email" id="accNewEmail" placeholder="email@empresa.com.br" aria-label="E-mail da pessoa" autocomplete="off">
+        <select id="accNewRole" aria-label="Permissão">
+          <option value="admin">Administrador</option>
+          <option value="viewer">Consulta</option>
+          <option value="blocked">Bloqueado</option>
+        </select>
+        <button type="button" class="btn btn--primary" id="accAdd">Adicionar</button>
+      </div>
+      <p class="modal__error" id="accAddError"></p>
+    </section>
+
+    <p class="modal__error" id="accError" role="alert"></p>
+
+    <div class="modal__foot">
+      <span class="acc-status" id="accStatus"></span>
+      <div class="modal__foot-actions">
+        <button type="button" class="link-btn hidden" id="accReload">Recarregar lista</button>
+        <button type="button" class="btn" data-close="accessModal">Fechar</button>
+        <button type="button" class="btn btn--primary" id="accSave" disabled>Salvar acessos</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- ========== Guia de mensagens ========== -->
   <dialog class="modal modal--xl" id="guideModal">
     <div class="modal__head">
@@ -461,7 +520,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" class="toast__action hidden" id="toastAction"></button></div>
   <button type="button" class="to-top" id="toTop" aria-label="Voltar ao topo">↑</button>
 
-  <script src="js/app.js?v=3.2.0" defer></script>
-  <script src="js/admin.js?v=3.2.0" defer></script>
+  <script src="js/app.js?v=3.3.0" defer></script>
+  <script src="js/admin.js?v=3.3.0" defer></script>
+  <script src="js/access.js?v=3.3.0" defer></script>
 </body>
 </html>

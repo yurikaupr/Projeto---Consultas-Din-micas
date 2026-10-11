@@ -1,8 +1,10 @@
 // Exige uma sessão válida (cookie assinado) para entregar qualquer arquivo do site.
 // Sem sessão: páginas redirecionam para /login.html e as demais requisições recebem 401.
-// O painel admin (/admin.html e /api/admin/*) exige perfil de administrador.
+// A cada requisição confere a lista de acessos (variáveis da Vercel + data/access.json),
+// então bloquear ou tirar o acesso de alguém vale mesmo para quem já está logado.
 import { next } from '@vercel/edge';
 import { jwtVerify } from 'jose';
+import { canStay, isAdminEmail, loadAccess } from './api/_access.js';
 
 export const config = {
   matcher: '/((?!_vercel).*)'
@@ -30,10 +32,6 @@ function readCookie(request, name) {
   return part ? part.slice(name.length + 1) : '';
 }
 
-function listFromEnv(name) {
-  return (process.env[name] || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
-
 function isAdminPath(pathname) {
   return pathname === '/admin.html' || pathname === '/admin' || pathname.startsWith('/api/admin/');
 }
@@ -50,18 +48,12 @@ function redirect(location) {
   return new Response(null, { status: 302, headers: { Location: location, 'Cache-Control': 'no-store' } });
 }
 
-// Regras conferidas a cada requisição, para que mudanças nas variáveis valham na hora
-function isStillAllowed(email) {
-  if (listFromEnv('BLOCKED_EMAILS').includes(email)) return false;
-  const allowList = listFromEnv('ALLOWED_EMAILS');
-  if (!allowList.length) return true;
-  return allowList.includes(email) ||
-    listFromEnv('ADMIN_EMAILS').includes(email) ||
-    listFromEnv('EXTRA_ALLOWED_EMAILS').includes(email);
-}
-
 export default async function middleware(request) {
   const { pathname } = new URL(request.url);
+
+  // A lista de acessos só é lida pela API do painel, nunca como arquivo
+  if (pathname === '/data/access.json') return new Response('Not found', { status: 404 });
+
   if (PUBLIC_PATHS.includes(pathname)) return next();
 
   const secret = process.env.SESSION_SECRET;
@@ -84,15 +76,19 @@ export default async function middleware(request) {
 
     if (session) {
       const email = String(session.email || '').toLowerCase();
+      const cfg = await loadAccess();
 
-      if (!isStillAllowed(email)) {
+      if (cfg.unavailable && !cfg.owners.has(email)) {
+        return wantsPage
+          ? new Response('Não foi possível conferir as permissões de acesso agora. Tente de novo em instantes.', { status: 503, headers: { 'Cache-Control': 'no-store' } })
+          : json(503, { error: 'access_unavailable' });
+      }
+      if (!canStay(cfg, email)) {
         return wantsPage
           ? new Response('Acesso revogado.', { status: 403, headers: { 'Cache-Control': 'no-store' } })
           : json(403, { error: 'revoked' });
       }
-
-      const isAdmin = session.role === 'admin' && listFromEnv('ADMIN_EMAILS').includes(email);
-      if (isAdminPath(pathname) && !isAdmin) {
+      if (isAdminPath(pathname) && !isAdminEmail(cfg, email)) {
         return pathname.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
       }
       return next();
