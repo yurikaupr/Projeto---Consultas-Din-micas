@@ -42,7 +42,9 @@
             <button type="button" class="menu__item" role="menuitem" id="btnUndo">Desfazer última ação</button>
             <button type="button" class="menu__item" role="menuitem" id="btnPublishMenu">Publicar alterações…</button>
             <button type="button" class="menu__item" role="menuitem" id="btnRepublish">Republicar tudo…</button>
-            <button type="button" class="menu__item" role="menuitem" id="menuAccess">Acessos e permissões…</button>
+            <button type="button" class="menu__item" role="menuitem" id="menuSecurity">Segurança e acesso…</button>
+            <button type="button" class="menu__item js-master-only hidden" role="menuitem" id="menuAccess">Usuários e permissões…</button>
+            <button type="button" class="menu__item js-master-only hidden" role="menuitem" id="menuLogs">Logs de acesso…</button>
             <button type="button" class="menu__item" role="menuitem" id="menuGuide">Guia de mensagens</button>
             <div class="menu__sep"></div>
             <button type="button" class="menu__item menu__item--danger" role="menuitem" id="btnDiscard">Descartar rascunho</button>
@@ -411,7 +413,7 @@
         <h3 class="acc-title">Pessoas e permissões <span class="acc-count" id="accSummary"></span></h3>
         <input type="search" class="mini-input" id="accFilter" placeholder="Buscar pessoa" aria-label="Buscar pessoa">
       </div>
-      <p class="acc-legend"><b>Administrador</b> acessa o painel e publica. <b>Consulta</b> só consulta e baixa (use para liberar alguém de fora da empresa). <b>Bloqueado</b> não entra, mesmo sendo da empresa.</p>
+      <p class="acc-legend"><b>Master</b> faz tudo: painel, publica, gerencia usuários e vê os logs. <b>Admin</b> acessa o painel e publica consultas (não mexe em usuários nem logs). <b>Consulta</b> só consulta e baixa (use para liberar alguém de fora da empresa). <b>Bloqueado</b> não entra, mesmo sendo da empresa.</p>
       <div class="acc-list" id="accList"></div>
     </section>
 
@@ -421,7 +423,8 @@
         <input type="text" id="accNewName" placeholder="Nome (opcional)" maxlength="80" aria-label="Nome da pessoa">
         <input type="email" id="accNewEmail" placeholder="email@empresa.com.br" aria-label="E-mail da pessoa" autocomplete="off">
         <select id="accNewRole" aria-label="Permissão">
-          <option value="admin">Administrador</option>
+          <option value="master">Master (tudo)</option>
+          <option value="admin" selected>Admin (sobe consulta)</option>
           <option value="viewer">Consulta</option>
           <option value="blocked">Bloqueado</option>
         </select>
@@ -438,6 +441,69 @@
         <button type="button" class="link-btn hidden" id="accReload">Recarregar lista</button>
         <button type="button" class="btn" data-close="accessModal">Fechar</button>
         <button type="button" class="btn btn--primary" id="accSave" disabled>Salvar acessos</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ========== Segurança e acesso (todos do painel) ========== -->
+  <dialog class="modal modal--xl" id="securityModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Segurança e acesso</h2>
+        <p class="modal__sub">A regra que decide quem entra no site e no painel — reconferida pelo servidor a cada acesso.</p>
+      </div>
+      <button type="button" class="icon-btn" data-close="securityModal" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="sec-banner" id="secBanner" role="status">Carregando…</div>
+
+    <section class="acc-section">
+      <h3 class="acc-title">Resumo</h3>
+      <div class="sec-grid" id="secGrid"></div>
+    </section>
+
+    <section class="acc-section">
+      <h3 class="acc-title">Quem tem acesso elevado</h3>
+      <div class="sec-people" id="secPeople"></div>
+    </section>
+
+    <section class="acc-section">
+      <h3 class="acc-title">Garantias ativas</h3>
+      <ul class="sec-checks" id="secChecks"></ul>
+    </section>
+
+    <p class="modal__error" id="secError" role="alert"></p>
+    <div class="modal__foot">
+      <span class="muted-text" id="secYou"></span>
+      <div class="modal__foot-actions">
+        <button type="button" class="link-btn" id="secReload">Recarregar</button>
+        <button type="button" class="btn btn--primary" data-close="securityModal">Fechar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ========== Logs de acesso (somente master) ========== -->
+  <dialog class="modal modal--xl" id="logsModal">
+    <div class="modal__head">
+      <div>
+        <h2 class="modal__title">Logs de acesso</h2>
+        <p class="modal__sub">Entradas, tentativas negadas, publicações e mudanças de acesso. Nunca contém senha, token ou conteúdo de consulta.</p>
+      </div>
+      <button type="button" class="icon-btn" data-close="logsModal" aria-label="Fechar">×</button>
+    </div>
+
+    <div class="acc-head-row">
+      <span class="acc-count" id="logCount"></span>
+      <input type="search" class="mini-input" id="logFilter" placeholder="Filtrar por e-mail ou evento" aria-label="Filtrar logs">
+    </div>
+    <div class="log-list" id="logList"></div>
+
+    <p class="modal__error" id="logError" role="alert"></p>
+    <div class="modal__foot">
+      <span class="muted-text" id="logNote"></span>
+      <div class="modal__foot-actions">
+        <button type="button" class="link-btn" id="logReload">Recarregar</button>
+        <button type="button" class="btn btn--primary" data-close="logsModal">Fechar</button>
       </div>
     </div>
   </dialog>

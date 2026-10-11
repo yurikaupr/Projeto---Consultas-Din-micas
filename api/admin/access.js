@@ -1,7 +1,7 @@
 // Lista de acessos: quem entra, quem administra e quem está bloqueado.
 // GET devolve a lista atual. POST grava em data/access.json no GitHub (um commit por alteração).
-import { audit, requireAdmin, sameOrigin } from '../_session.js';
-import { ACCESS_PATH, EMAIL_RE, MAX_USERS, ROLES, loadAccess, setCache } from '../_access.js';
+import { audit, requireMaster, sameOrigin } from '../_session.js';
+import { ACCESS_PATH, EMAIL_RE, MAX_USERS, ROLES, appendAudit, loadAccess, setCache } from '../_access.js';
 
 function headers() {
   return {
@@ -23,7 +23,9 @@ function view(cfg, actor) {
     source: cfg.source,
     canSave: cfg.source === 'github',
     you: actor,
-    youOwner: cfg.owners.has(actor)
+    youOwner: cfg.owners.has(actor),
+    youMaster: true,                 // só master chega aqui (requireMaster)
+    roles: ['master', 'admin', 'viewer', 'blocked']
   };
 }
 
@@ -32,7 +34,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   if (req.method === 'POST' && !sameOrigin(req)) return res.status(403).json({ error: 'bad_origin' });
 
-  const session = await requireAdmin(req, res);
+  const session = await requireMaster(req, res);
   if (!session) return;
   const actor = String(session.email).toLowerCase();
 
@@ -70,13 +72,15 @@ export default async function handler(req, res) {
     });
   }
 
-  // Ninguém pode se trancar para fora (os administradores fixos da Vercel sempre ficam)
+  // Ninguém pode se trancar para fora (os masters fixos da Vercel sempre ficam).
+  // Só master chega aqui, então o ator precisa continuar master depois de salvar.
   const actorIsOwner = cfg.owners.has(actor);
   if (!actorIsOwner) {
     const me = users.filter((u) => u.email === actor)[0];
-    if (!me || me.role !== 'admin') return res.status(400).json({ error: 'self_demote' });
+    if (!me || me.role !== 'master') return res.status(400).json({ error: 'self_demote' });
   }
-  if (!cfg.owners.size && !users.some((u) => u.role === 'admin')) return res.status(400).json({ error: 'no_admin' });
+  // Precisa sobrar pelo menos um master (owner fixo da Vercel ou perfil master na lista)
+  if (!cfg.owners.size && !users.some((u) => u.role === 'master')) return res.status(400).json({ error: 'no_master' });
 
   const file = { version: 1, mode: body.mode === 'list' ? 'list' : 'domain', users: users };
   const branch = process.env.GITHUB_BRANCH || 'main';
@@ -98,11 +102,16 @@ export default async function handler(req, res) {
   const data = await put.json();
   setCache(file, data.content && data.content.sha);
 
-  audit('access_updated', {
-    email: actor, mode: file.mode,
+  const counts = {
+    masters: users.filter((u) => u.role === 'master').length,
     admins: users.filter((u) => u.role === 'admin').length,
     viewers: users.filter((u) => u.role === 'viewer').length,
     blocked: users.filter((u) => u.role === 'blocked').length
+  };
+  audit('access_updated', Object.assign({ email: actor, mode: file.mode }, counts));
+  await appendAudit({
+    ts: new Date().toISOString(), event: 'access_updated', email: actor, role: 'master',
+    detail: 'modo=' + file.mode + ' · masters=' + counts.masters + ' admins=' + counts.admins + ' viewers=' + counts.viewers + ' bloqueados=' + counts.blocked
   });
   return res.status(200).json(view(await loadAccess(), actor));
 }

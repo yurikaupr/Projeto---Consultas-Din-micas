@@ -1711,6 +1711,11 @@
     on('btnUndo', 'click', undo);
     on('btnDiscard', 'click', discardDraft);
     on('menuGuide', 'click', openGuide);
+    on('menuSecurity', 'click', openSecurity);
+    on('secReload', 'click', loadSecurity);
+    on('menuLogs', 'click', openLogs);
+    on('logReload', 'click', loadLogs);
+    on('logFilter', 'input', function () { renderLogs(); });
 
     on('reviewOptions', 'click', function (e) {
       var b = e.target.closest('[data-review]');
@@ -1827,6 +1832,126 @@
       saveDraft();
       setTimeout(function () { toast('Atribuí IDs a ' + n + ' consulta(s). Publique para o time passar a ver os números.'); }, 600);
     }
+  }
+
+  /* ==========================================================================
+     Segurança e acesso (todos do painel) + Logs de acesso (somente master)
+     ========================================================================== */
+  var ROLE_PT = { master: 'Master', admin: 'Admin', viewer: 'Consulta', blocked: 'Bloqueado' };
+
+  // Mostra os itens de menu só de master quando o usuário for master
+  function applyCaps(user) {
+    var master = !!(user && user.canManageUsers);
+    document.querySelectorAll('.js-master-only').forEach(function (el) { el.classList.toggle('hidden', !master); });
+  }
+  QH.hooks.user = applyCaps;
+
+  function openSecurity() { openModal($('securityModal')); loadSecurity(); }
+
+  function loadSecurity() {
+    $('secError').textContent = '';
+    var banner = $('secBanner');
+    banner.className = 'sec-banner';
+    banner.textContent = 'Carregando…';
+    fetch('/api/admin/status', { cache: 'no-store' }).then(function (res) {
+      if (res.status === 401) { window.location.replace('/login.html'); return null; }
+      return res.json().then(function (d) { return { ok: res.ok, status: res.status, d: d }; });
+    }).then(function (r) {
+      if (!r) return;
+      if (!r.ok) { banner.textContent = '—'; $('secError').textContent = 'Não foi possível carregar o status (' + (r.d.error || r.status) + ').'; return; }
+      renderSecurity(r.d);
+    }).catch(function () { banner.textContent = '—'; $('secError').textContent = 'Falha de conexão.'; });
+  }
+
+  function renderSecurity(d) {
+    var listMode = d.mode === 'list';
+    var banner = $('secBanner');
+    banner.className = 'sec-banner ' + (listMode ? 'sec-banner--list' : 'sec-banner--domain');
+    banner.innerHTML = listMode
+      ? '🔒 <b>Somente pessoas da lista</b> entram. Nem contas @' + esc(d.domain) + ' fora da lista acessam.'
+      : '🏢 <b>Somente contas @' + esc(d.domain) + '</b> entram (mais quem estiver liberado na lista). Qualquer outra conta Google é recusada no servidor.';
+
+    var rows = [
+      ['Domínio permitido', '@' + d.domain],
+      ['Regra de entrada', listMode ? 'Somente lista' : 'Empresa (todo @' + d.domain + ')'],
+      ['Origem das regras', d.source === 'github' ? 'GitHub (painel)' : (d.source === 'env' ? 'Variáveis da Vercel' : 'Indisponível')],
+      ['Seu perfil', ROLE_PT[d.role] || d.role],
+      ['Logs de acesso', d.accessLog ? 'Ativados' : 'Desativados'],
+      ['Pessoas', d.counts.masters + ' master · ' + d.counts.admins + ' admin · ' + d.counts.viewers + ' consulta · ' + d.counts.blocked + ' bloqueado']
+    ];
+    if (d.forced) rows.push(['Observação', 'A variável ALLOWED_EMAILS (Vercel) está forçando o modo lista.']);
+    $('secGrid').innerHTML = rows.map(function (x) {
+      return '<div class="sec-cell"><span class="sec-k">' + esc(x[0]) + '</span><span class="sec-v">' + esc(x[1]) + '</span></div>';
+    }).join('');
+
+    function people(title, emails, tag) {
+      if (!emails || !emails.length) return '';
+      return '<div class="sec-pgroup"><h4>' + esc(title) + '</h4>' + emails.map(function (e) {
+        return '<span class="sec-chip sec-chip--' + tag + '">' + esc(e) + '</span>';
+      }).join('') + '</div>';
+    }
+    var peopleHtml = people('Masters fixos (Vercel, imutáveis)', d.owners, 'master') +
+      people('Masters (definidos no painel)', d.masters, 'master') +
+      people('Admins (sobem consulta)', d.admins, 'admin');
+    $('secPeople').innerHTML = peopleHtml || '<p class="muted-text">Nenhum acesso elevado além dos masters fixos.</p>';
+
+    var checks = [
+      'Toda página e rota exige sessão válida (cookie assinado no servidor).',
+      'O painel só abre para master ou admin — conferido a cada acesso.',
+      'Usuários e logs: somente master.',
+      listMode ? 'Entrada restrita às pessoas da lista.' : 'Entrada restrita a @' + d.domain + ' (domínio verificado pelo Google) e à lista.',
+      'O perfil vem da lista no servidor, nunca do que o navegador informa.',
+      'Contas de outros domínios são recusadas, exceto se liberadas como Consulta.'
+    ];
+    $('secChecks').innerHTML = checks.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('');
+    $('secYou').textContent = 'Você: ' + d.you + ' · ' + (ROLE_PT[d.role] || d.role);
+  }
+
+  /* ---------- Logs (somente master) ---------- */
+  var LOG_LABEL = { login_ok: 'Entrou', login_denied: 'Entrada NEGADA', publish_ok: 'Publicou', access_updated: 'Mudou acessos' };
+  var logCache = [];
+
+  function openLogs() { openModal($('logsModal')); loadLogs(); }
+
+  function loadLogs() {
+    $('logError').textContent = '';
+    $('logList').innerHTML = '<p class="muted-text">Carregando…</p>';
+    fetch('/api/admin/logs?limit=300', { cache: 'no-store' }).then(function (res) {
+      if (res.status === 401) { window.location.replace('/login.html'); return null; }
+      return res.json().then(function (d) { return { ok: res.ok, status: res.status, d: d }; });
+    }).then(function (r) {
+      if (!r) return;
+      if (!r.ok) {
+        logCache = []; $('logList').innerHTML = ''; $('logCount').textContent = '';
+        $('logError').textContent = r.d.error === 'github_not_configured'
+          ? 'O GitHub ainda não está configurado, então não há logs para mostrar.'
+          : (r.d.error === 'forbidden_master' ? 'Apenas master pode ver os logs.' : 'Não foi possível carregar os logs.');
+        return;
+      }
+      logCache = Array.isArray(r.d.entries) ? r.d.entries : [];
+      $('logNote').textContent = (r.d.branch ? 'Branch de logs: ' + r.d.branch + ' · ' : '') + 'até ' + (r.d.total || logCache.length) + ' evento(s) guardados.';
+      renderLogs();
+    }).catch(function () { $('logError').textContent = 'Falha de conexão.'; });
+  }
+
+  function renderLogs() {
+    var term = normalize($('logFilter').value);
+    var list = logCache.filter(function (e) {
+      return !term || normalize((e.email || '') + ' ' + (e.event || '') + ' ' + (e.detail || '')).indexOf(term) !== -1;
+    });
+    $('logCount').textContent = list.length + ' evento(s)';
+    if (!list.length) { $('logList').innerHTML = '<p class="muted-text">Nenhum evento.</p>'; return; }
+    $('logList').innerHTML = list.map(function (e) {
+      var when = '';
+      try { when = e.ts ? new Date(e.ts).toLocaleString('pt-BR') : ''; } catch (err) { when = String(e.ts || ''); }
+      var kind = e.event === 'login_denied' ? 'err' : (e.event === 'login_ok' ? 'ok' : 'info');
+      return '<div class="log-row log-row--' + kind + '">' +
+        '<span class="log-ev">' + esc(LOG_LABEL[e.event] || e.event || '') + '</span>' +
+        '<span class="log-email">' + esc(e.email || '—') + (e.role ? ' <small>(' + esc(e.role) + ')</small>' : '') + '</span>' +
+        '<span class="log-detail">' + esc(e.detail || '') + (e.ip ? ' · ' + esc(e.ip) : '') + '</span>' +
+        '<span class="log-when">' + esc(when) + '</span>' +
+      '</div>';
+    }).join('');
   }
 
   QH.hooks.bind = bindAdmin;

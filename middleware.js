@@ -4,7 +4,7 @@
 // então bloquear ou tirar o acesso de alguém vale mesmo para quem já está logado.
 import { next } from '@vercel/edge';
 import { jwtVerify } from 'jose';
-import { canStay, isAdminEmail, loadAccess } from './api/_access.js';
+import { canStay, isAdminEmail, isMaster, loadAccess } from './api/_access.js';
 
 export const config = {
   matcher: '/((?!_vercel).*)'
@@ -34,6 +34,11 @@ function readCookie(request, name) {
 
 function isAdminPath(pathname) {
   return pathname === '/admin.html' || pathname === '/admin' || pathname.startsWith('/api/admin/');
+}
+
+// Rotas que só o MASTER acessa: gerência de usuários e logs de acesso.
+function isMasterPath(pathname) {
+  return pathname.startsWith('/api/admin/access') || pathname.startsWith('/api/admin/logs');
 }
 
 function json(status, body) {
@@ -88,8 +93,15 @@ export default async function middleware(request) {
           ? new Response('Acesso revogado.', { status: 403, headers: { 'Cache-Control': 'no-store' } })
           : json(403, { error: 'revoked' });
       }
-      if (isAdminPath(pathname) && !isAdminEmail(cfg, email)) {
-        return pathname.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
+      if (isAdminPath(pathname)) {
+        // Primeiro: precisa poder entrar no painel (master ou admin)
+        if (!isAdminEmail(cfg, email)) {
+          return pathname.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
+        }
+        // Depois: rotas de master (usuários e logs) exigem master de verdade
+        if (isMasterPath(pathname) && !isMaster(cfg, email)) {
+          return json(403, { error: 'forbidden_master' });
+        }
       }
       return next();
     }

@@ -2,6 +2,7 @@
 // A Vercel faz o deploy automaticamente a cada commit.
 import zlib from 'node:zlib';
 import { audit, requireAdmin, sameOrigin } from '../_session.js';
+import { appendAudit } from '../_access.js';
 
 const GITHUB_API = 'https://api.github.com';
 const FILE_PATH = 'data/queries.json';
@@ -111,6 +112,7 @@ export default async function handler(req, res) {
       if (put.ok) {
         const data = await put.json();
         audit('publish_ok', { email: session.email, count: list.length, commit: data.commit && data.commit.sha });
+        await appendAudit({ ts: new Date().toISOString(), event: 'publish_ok', email: session.email, role: session.role || '', detail: list.length + ' consulta(s) publicada(s)' });
         return res.status(200).json({ ok: true, count: list.length, nums: numbered, commit: data.commit && data.commit.sha });
       }
       if (put.status !== 409 && put.status !== 422) {
