@@ -3,16 +3,9 @@
   "mode": "domain",
   "users": [
     {
-      "email": "yuri.klug@magazord.com.br",
-      "name": "Yuri Klug",
-      "role": "master",
-      "added_by": "yurikaupr@gmail.com",
-      "added_at": 1760000000000
-    },
-    {
       "email": "yurikaupr@gmail.com",
       "name": "Yuri 2",
-      "role": "master",
+      "role": "admin",
       "added_by": "yurikaupr@gmail.com",
       "added_at": 1791739238876
     }
