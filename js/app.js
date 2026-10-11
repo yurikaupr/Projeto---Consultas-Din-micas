@@ -1,68 +1,63 @@
 /* ==========================================================================
-   QueryHub | Lógica da aplicação
-   Dois modos, definidos por <body data-mode="viewer|admin">:
-   - viewer (index.html): consulta, busca, detalhes e download. Somente leitura.
-   - admin  (admin.html): cadastro, edição e publicação para o GitHub.
+   QueryHub | Núcleo (usado pelo time e pelo painel admin)
+   O painel admin acrescenta recursos em js/admin.js, usando window.QH.
    ========================================================================== */
 (function () {
   'use strict';
 
+  if (window.QHBuild) window.QHBuild.report('app', '3.1.0');
+
   /* ---------- Configurações ---------- */
   var ADMIN = document.body.getAttribute('data-mode') === 'admin';
   var DATA_URL = 'data/queries.json';
-  var DRAFT_KEY = 'queryhub:admin-draft:v2';
   var FAV_KEY = 'queryhub:favorites:v1';
+  var REQUEST_EMAIL = 'yuri.klug@magazord.com.br';   // quem recebe os pedidos de ajuste
+  var MAILTO_LIMIT = 1900;                            // tamanho máximo do link de e-mail (alguns programas cortam acima disso)
   var MAX_CATEGORIES = 3;
   var MAX_HIGHLIGHTS = 4;
+  var PAGE = 60;                                      // cards desenhados por vez
+  var NEW_DAYS = 7;
+  var INK = '#17202a';
 
+  /* Cada categoria tem a cor da marca e uma cor de texto que garante contraste mínimo de 4,5 */
   var CATEGORIES = [
-    { name: 'Clientes',    color: '#2754d7' },
-    { name: 'Pedidos',     color: '#ee6757' },
-    { name: 'Faturamento', color: '#3aae2d' },
-    { name: 'Marketplace', color: '#7a4fc4' },
-    { name: 'Financeiro',  color: '#1a9a8f' },
-    { name: 'Produtos',    color: '#d9a400' },
-    { name: 'Estoque',     color: '#f08a2c' },
-    { name: 'Preço',       color: '#7fae1b' },
-    { name: 'Outros',      color: '#8a94a0' }
+    { name: 'Clientes',    color: '#2754d7', fg: '#ffffff' },
+    { name: 'Pedidos',     color: '#ee6757', fg: INK },
+    { name: 'Faturamento', color: '#3aae2d', fg: INK },
+    { name: 'Marketplace', color: '#7a4fc4', fg: '#ffffff' },
+    { name: 'Financeiro',  color: '#1a9a8f', fg: INK },
+    { name: 'Produtos',    color: '#d9a400', fg: INK },
+    { name: 'Estoque',     color: '#f08a2c', fg: INK },
+    { name: 'Preço',       color: '#7fae1b', fg: INK },
+    { name: 'Outros',      color: '#8a94a0', fg: INK }
   ];
-
-  /* Palavras do nome da consulta usadas para sugerir categorias na importação em lote.
-     O padrão exige início de palavra (\b) para não casar no meio de outras, como "nfe" em "conferência". */
-  var CATEGORY_HINTS = [
-    { name: 'Clientes',    re: /\b(?:cliente|pessoa|contato|cadastro)/ },
-    { name: 'Pedidos',     re: /\b(?:pedido|venda|carrinho|entrega|rastreio|frete)/ },
-    { name: 'Faturamento', re: /\b(?:faturamento|fatura|nota fiscal|\bnf\b|nfe)/ },
-    { name: 'Marketplace', re: /\b(?:marketplace|amazon|shopee|magalu|mercado livre|americanas|\bb2w\b)/ },
-    { name: 'Financeiro',  re: /\b(?:financeiro|pagamento|recebiv|conciliacao|boleto|cartao|repasse)/ },
-    { name: 'Produtos',    re: /\b(?:produto|\bsku\b|marca|derivacao|categoria)/ },
-    { name: 'Estoque',     re: /\b(?:estoque|saldo|deposito)/ },
-    { name: 'Preço',       re: /\b(?:preco|tabela de|promocao|desconto)/ }
-  ];
-
-  var ACRONYMS = { sku: 'SKU', id: 'ID', nf: 'NF', cpf: 'CPF', cnpj: 'CNPJ', uf: 'UF', cep: 'CEP' };
 
   /* ---------- Estado ---------- */
   var state = {
     queries: [],
-    favs: {},          // id -> true (guardado só no navegador de cada pessoa)
+    favs: {},           // id -> true (só no navegador de cada pessoa)
     search: '',
-    category: '',      // '' = todas | '__fav' = favoritas | nome da categoria
+    sq: null,           // busca já interpretada
+    cats: {},           // categorias selecionadas
+    catMode: 'any',     // any = qualquer uma | all = todas
+    onlyFav: false,
     sort: 'name',
-    selected: {},      // id -> true
+    review: '',         // filtro de revisão (admin)
+    selected: {},
     openId: null,
-    editing: null,     // { query, isNew }
-    dirty: false,      // admin: há alterações ainda não publicadas
-    publishing: false,
-    report: null,      // admin: último relatório de importação
-    reportTab: 'erro',
-    warnById: {}       // admin: avisos por consulta (mostrados no editor)
+    view: [],           // consultas da lista atual, já filtradas e ordenadas
+    rendered: 0,
+    counts: { all: 0, fav: 0, byCat: {} },
+    loaded: false,
+    user: null,
+    request: null       // consulta do pedido de ajuste aberto
   };
+
+  var QH = window.QH = { ADMIN: ADMIN, state: state, CATEGORIES: CATEGORIES, REQUEST_EMAIL: REQUEST_EMAIL, MAX_CATEGORIES: MAX_CATEGORIES, MAX_HIGHLIGHTS: MAX_HIGHLIGHTS, hooks: {} };
 
   /* ---------- Utilitários ---------- */
   function $(id) { return document.getElementById(id); }
 
-  // Registra um evento só se o elemento existir (o viewer não tem os controles de admin)
   function on(id, evt, fn) {
     var el = $(id);
     if (el) el.addEventListener(evt, fn);
@@ -82,28 +77,32 @@
     return normalize(text).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'consulta';
   }
 
-  function colorOf(categoryName) {
-    var cat = CATEGORIES.filter(function (c) { return c.name === categoryName; })[0];
-    return cat ? cat.color : '#8a94a0';
+  function debounce(fn, ms) {
+    var t;
+    return function () {
+      var args = arguments, self = this;
+      clearTimeout(t);
+      t = setTimeout(function () { fn.apply(self, args); }, ms);
+    };
   }
 
-  function toast(message) {
-    var el = $('toast');
-    el.textContent = message;
-    el.classList.add('is-visible');
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(function () { el.classList.remove('is-visible'); }, 4200);
+  function reducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
-  function humanize(name, title) {
-    if (title && String(title).trim()) return String(title).trim();
-    return String(name || '')
-      .replace(/^:/, '')
-      .split(/[_\s]+/)
-      .filter(Boolean)
-      .map(function (w) { return ACRONYMS[w.toLowerCase()] || w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); })
-      .join(' ');
+  function categoryOf(name) {
+    for (var i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i].name === name) return CATEGORIES[i];
+    return CATEGORIES[CATEGORIES.length - 1];
   }
+
+  function formatId(n) { return '#' + String(n).padStart(3, '0'); }
+
+  function findQuery(id) {
+    for (var i = 0; i < state.queries.length; i++) if (state.queries[i].id === id) return state.queries[i];
+    return undefined;
+  }
+
+  function selectedIds() { return Object.keys(state.selected); }
 
   function download(filename, content, mime) {
     var blob = content instanceof Blob ? content : new Blob([content], { type: mime || 'application/json' });
@@ -116,457 +115,88 @@
     setTimeout(function () { URL.revokeObjectURL(link.href); }, 500);
   }
 
-  function selectedIds() { return Object.keys(state.selected); }
-
-  /* ---------- Leitura do JSON da consulta dinâmica ---------- */
-  function guessCategories(name) {
-    var text = normalize(name);
-    var found = CATEGORY_HINTS
-      .filter(function (hint) { return hint.re.test(text); })
-      .map(function (hint) { return hint.name; })
-      .slice(0, 2);
-    return found.length ? found : ['Outros'];
-  }
-
-  /* ==========================================================================
-     Validação de arquivos
-     Cada problema tem um código, uma gravidade (erro, aviso, info, ignorado),
-     o que aconteceu (detail) e como resolver (hint).
-     ========================================================================== */
-  var MAX_FILE_CHARS = 8000000;     // acima disso o arquivo é recusado
-  var WARN_FILE_CHARS = 1000000;    // acima disso há aviso de peso
-  var WARN_QUERY_CHARS = 200000;
-  var WARN_COLUMNS = 250;
-
-  var ISSUES = {
-    /* ----- Arquivo ----- */
-    ARQ_VAZIO:    { g: 'Arquivo', sev: 'erro', title: 'Arquivo vazio', meaning: 'O arquivo não tem conteúdo (ou só tem espaços e quebras de linha).', hint: 'Exporte a consulta novamente na plataforma. O arquivo foi salvo sem dados.' },
-    ARQ_GRANDE:   { g: 'Arquivo', sev: 'erro', title: 'Arquivo grande demais', meaning: 'O arquivo passa do limite de 8 MB.', hint: 'Uma consulta dinâmica normal tem poucos KB. Confira se não é o arquivo errado (backup, exportação de dados ou dump).' },
-    ARQ_LEITURA:  { g: 'Arquivo', sev: 'erro', title: 'Não foi possível ler o arquivo', meaning: 'O navegador falhou ao abrir o arquivo.', hint: 'Selecione o arquivo de novo. Se estiver em pasta sincronizada (OneDrive, Google Drive), copie para o computador antes.' },
-    ARQ_ENCODING: { g: 'Arquivo', sev: 'aviso', title: 'Caracteres corrompidos (codificação)', meaning: 'O texto tem o caractere � (acentos que se perderam na gravação do arquivo).', hint: 'Reexporte ou salve o arquivo como UTF-8. A consulta foi importada, mas nomes e comentários podem estar com acentos errados.' },
-    ARQ_PESADO:   { g: 'Arquivo', sev: 'aviso', title: 'Arquivo pesado', meaning: 'O arquivo tem mais de 1 MB.', hint: 'Isso é incomum para uma consulta. A importação funcionou, mas confira se o conteúdo é o esperado.' },
-    ARQ_IGNORADO: { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo ignorado (não é .json)', meaning: 'Só arquivos .json e .zip são lidos.', hint: 'Nenhuma ação necessária, a menos que este arquivo devesse ser uma consulta. Nesse caso, exporte em .json.' },
-    ARQ_SISTEMA:  { g: 'Arquivo', sev: 'ignorado', title: 'Arquivo de sistema ignorado', meaning: 'Arquivos como .DS_Store, Thumbs.db, desktop.ini e a pasta __MACOSX são criados pelo computador, não são consultas.', hint: 'Nenhuma ação necessária.' },
-
-    /* ----- ZIP ----- */
-    ZIP_INVALIDO:   { g: 'ZIP', sev: 'erro', title: 'ZIP inválido ou corrompido', meaning: 'O arquivo .zip não pôde ser aberto.', hint: 'O download pode ter sido interrompido. Baixe ou compacte de novo. Se possível, extraia o ZIP no computador e envie os .json.' },
-    ZIP_PROTEGIDO:  { g: 'ZIP', sev: 'erro', title: 'ZIP protegido por senha', meaning: 'O .zip está criptografado e não pode ser lido pelo navegador.', hint: 'Extraia o ZIP com a senha e compacte de novo sem senha, ou envie os .json soltos.' },
-    ZIP_SEM_JSON:   { g: 'ZIP', sev: 'erro', title: 'ZIP sem nenhum arquivo .json', meaning: 'O .zip abriu, mas não tem arquivos .json dentro.', hint: 'Confira se compactou o conteúdo certo. Os arquivos precisam terminar em .json.' },
-    ZIP_ANINHADO:   { g: 'ZIP', sev: 'ignorado', title: 'ZIP dentro de ZIP ignorado', meaning: 'Há um .zip dentro do .zip. Os ZIPs internos não são abertos.', hint: 'Extraia o ZIP interno e envie os .json dele separadamente.' },
-
-    /* ----- JSON (sintaxe) ----- */
-    JSON_TRUNCADO:        { g: 'JSON', sev: 'erro', title: 'JSON cortado (arquivo incompleto)', meaning: 'O arquivo termina no meio do conteúdo.', hint: 'Provavelmente o download ou a cópia foi interrompido. Exporte a consulta de novo.' },
-    JSON_VIRGULA:         { g: 'JSON', sev: 'erro', title: 'JSON com vírgula sobrando', meaning: 'Há uma vírgula antes de um } ou ] de fechamento.', hint: 'Remova a vírgula indicada. JSON não aceita vírgula depois do último item.' },
-    JSON_ASPAS:           { g: 'JSON', sev: 'erro', title: 'JSON com aspas simples', meaning: 'O texto usa aspas simples (\') em vez de aspas duplas (").', hint: 'JSON exige aspas duplas em textos e nomes de campos. Reexporte da plataforma em vez de editar à mão.' },
-    JSON_CHAVE_SEM_ASPAS: { g: 'JSON', sev: 'erro', title: 'JSON com nome de campo sem aspas', meaning: 'Algum nome de campo (como name ou query) está sem aspas.', hint: 'Em JSON, os nomes dos campos precisam estar entre aspas duplas.' },
-    JSON_FORMATO_JS:      { g: 'JSON', sev: 'erro', title: 'Parece objeto JavaScript, não JSON', meaning: 'O conteúdo mistura aspas simples, campos sem aspas, comentários ou vírgulas sobrando.', hint: 'Esse formato é de código JavaScript. Reexporte a consulta da plataforma em JSON.' },
-    JSON_COMENTARIO:      { g: 'JSON', sev: 'erro', title: 'JSON com comentários', meaning: 'O arquivo tem comentários (// ou /* */), que JSON não permite.', hint: 'Remova os comentários do arquivo.' },
-    JSON_HTML:            { g: 'JSON', sev: 'erro', title: 'O arquivo é uma página HTML', meaning: 'O conteúdo começa com "<", típico de página da web.', hint: 'Provavelmente foi baixada uma página de erro ou de login no lugar do JSON. Entre na plataforma e exporte de novo.' },
-    JSON_SQL_PURO:        { g: 'JSON', sev: 'erro', title: 'O arquivo contém SQL puro', meaning: 'O conteúdo começa com um comando SQL, não com { do JSON.', hint: 'Este arquivo parece só o texto do SQL. O QueryHub precisa do JSON exportado da consulta dinâmica, que traz também a lista de campos.' },
-    JSON_TEXTO_LIVRE:     { g: 'JSON', sev: 'erro', title: 'O arquivo não parece JSON', meaning: 'O conteúdo não começa com { nem [ (parece texto comum).', hint: 'Confira se é o arquivo certo. O JSON da consulta começa com { .' },
-    JSON_MULTIPLOS:       { g: 'JSON', sev: 'erro', title: 'Mais de um JSON no mesmo arquivo', meaning: 'Há vários objetos { } seguidos, sem estarem dentro de uma lista.', hint: 'Separe cada consulta em um arquivo próprio, ou coloque todas dentro de uma lista [ ... ].' },
-    JSON_QUEBRA_LINHA:    { g: 'JSON', sev: 'erro', title: 'Quebra de linha dentro de um texto', meaning: 'Um texto entre aspas (normalmente o SQL) tem quebras de linha reais, que JSON não aceita.', hint: 'Dentro do JSON as quebras de linha precisam aparecer como \\n. Reexporte da plataforma.' },
-    JSON_ESCAPE:          { g: 'JSON', sev: 'erro', title: 'Barra invertida sem escape', meaning: 'Há uma \\ dentro de um texto sem estar escrita como \\\\.', hint: 'Troque \\ por \\\\ dentro dos textos, ou reexporte o arquivo.' },
-    JSON_VALOR_INVALIDO:  { g: 'JSON', sev: 'erro', title: 'Valor inválido (undefined, NaN ou Infinity)', meaning: 'JSON não aceita esses valores.', hint: 'Troque por null ou remova o campo.' },
-    JSON_SINTAXE:         { g: 'JSON', sev: 'erro', title: 'JSON com erro de sintaxe', meaning: 'O arquivo não é um JSON válido e o erro não se encaixa nos casos comuns.', hint: 'Veja a linha e o trecho indicados. Valide o arquivo em um validador de JSON ou reexporte da plataforma.' },
-
-    /* ----- Estrutura ----- */
-    RAIZ_TIPO:        { g: 'Estrutura', sev: 'erro', title: 'Conteúdo no formato errado', meaning: 'O arquivo é um JSON válido, mas não é um objeto { } (é um número, texto, verdadeiro/falso ou nulo).', hint: 'O arquivo da consulta dinâmica é um objeto com name, query e field.' },
-    RAIZ_LISTA:       { g: 'Estrutura', sev: 'erro', title: 'Lista que não é de consultas', meaning: 'O arquivo é uma lista [ ... ], mas os itens não são consultas (precisam ter query e field).', hint: 'Se for um arquivo de várias consultas, cada item precisa ter "query" e "field". Senão, envie as consultas em arquivos separados.' },
-    RAIZ_ENCAPSULADA: { g: 'Estrutura', sev: 'erro', title: 'Consulta dentro de outra chave', meaning: 'A consulta existe, mas está dentro de uma chave (por exemplo { "data": { ... } }) e não na raiz.', hint: 'Exporte novamente ou mova o conteúdo para a raiz do arquivo.' },
-    BIBLIOTECA_ITEM:  { g: 'Estrutura', sev: 'erro', title: 'Item inválido em uma biblioteca exportada', meaning: 'Em um arquivo de biblioteca (lista de consultas do QueryHub), este item não tem um raw_json válido.', hint: 'Corrija ou remova o item indicado e envie de novo.' },
-    QUERY_AUSENTE:    { g: 'Estrutura', sev: 'erro', title: 'Falta o campo "query"', meaning: 'O JSON não tem o campo com o texto do SQL.', hint: 'O campo se chama "query". Confira se este é o arquivo exportado da consulta dinâmica.' },
-    QUERY_TIPO:       { g: 'Estrutura', sev: 'erro', title: 'O campo "query" não é texto', meaning: 'O campo "query" existe, mas não é o texto do SQL (é número, lista, objeto etc.).', hint: 'O SQL precisa estar em "query" como texto entre aspas.' },
-    QUERY_VAZIA:      { g: 'Estrutura', sev: 'erro', title: 'O campo "query" está vazio', meaning: 'O campo existe, mas não tem SQL.', hint: 'Abra a consulta na plataforma e confira se o SQL foi salvo antes de exportar.' },
-    FIELD_AUSENTE:    { g: 'Estrutura', sev: 'erro', title: 'Falta o campo "field"', meaning: 'O JSON não tem a lista de campos (colunas e filtros).', hint: 'O campo se chama "field". Confira se este é o arquivo exportado da consulta dinâmica.' },
-    FIELD_TIPO:       { g: 'Estrutura', sev: 'erro', title: 'O campo "field" não é uma lista', meaning: 'O campo "field" existe, mas não é uma lista [ ... ].', hint: '"field" precisa ser uma lista de objetos, um para cada coluna ou filtro.' },
-
-    /* ----- Avisos de conteúdo (a consulta é importada) ----- */
-    LISTA_EXPANDIDA:   { g: 'Conteúdo', sev: 'aviso', title: 'Arquivo com várias consultas', meaning: 'O arquivo era uma lista de consultas. Cada item virou uma consulta separada.', hint: 'Confira os nomes. Cada uma tem seu próprio download em JSON.' },
-    NOME_AUSENTE:      { g: 'Conteúdo', sev: 'aviso', title: 'Consulta sem nome', meaning: 'O JSON não tem o campo "name".', hint: 'Foi usado o nome do arquivo. Edite o nome da consulta.' },
-    NOME_TIPO:         { g: 'Conteúdo', sev: 'aviso', title: 'Nome em formato inesperado', meaning: 'O campo "name" não é um texto.', hint: 'Foi usado o nome do arquivo. Edite o nome da consulta.' },
-    NOME_CURTO:        { g: 'Conteúdo', sev: 'aviso', title: 'Nome muito curto', meaning: 'O nome tem menos de 3 caracteres.', hint: 'Edite o nome para algo descritivo. O editor não aceita nomes com menos de 3 caracteres.' },
-    NOME_LONGO:        { g: 'Conteúdo', sev: 'aviso', title: 'Nome muito longo', meaning: 'O nome tem mais de 160 caracteres.', hint: 'Edite o nome para algo mais curto. Nomes longos quebram o layout dos cards.' },
-    FIELD_VAZIO:       { g: 'Conteúdo', sev: 'aviso', title: 'Lista de campos vazia', meaning: 'O campo "field" é uma lista vazia, sem colunas nem filtros.', hint: 'A consulta foi importada, mas sem colunas para mostrar. Confira a exportação.' },
-    SEM_COLUNAS:       { g: 'Conteúdo', sev: 'aviso', title: 'Consulta sem colunas', meaning: 'Nenhum campo tem tipo 1 (coluna de retorno). Só há filtros ou campos de outro tipo.', hint: 'É normal para rotinas que não retornam dados. Se deveria retornar, confira o campo "tipo" dos campos.' },
-    FIELD_ITEM_INVALIDO:{ g: 'Conteúdo', sev: 'aviso', title: 'Itens inválidos na lista de campos', meaning: 'Alguns itens de "field" não são objetos (são nulos, textos ou números) e foram ignorados.', hint: 'Confira a exportação. Esses itens não aparecem como colunas.' },
-    CAMPO_SEM_NOME:    { g: 'Conteúdo', sev: 'aviso', title: 'Coluna sem nome', meaning: 'Há campos de coluna (tipo 1) sem o campo "name", ignorados.', hint: 'Cada coluna precisa de um "name". Confira a exportação.' },
-    CAMPO_SEM_TIPO:    { g: 'Conteúdo', sev: 'aviso', title: 'Campo sem tipo', meaning: 'Há campos sem o valor "tipo". Eles não são tratados como colunas.', hint: 'As colunas de retorno têm "tipo": 1. Se estes campos deveriam ser colunas, confira a exportação.' },
-    CAMPO_TIPO_INVALIDO:{ g: 'Conteúdo', sev: 'aviso', title: 'Campo com tipo inválido', meaning: 'O valor de "tipo" não é um número (por exemplo, é um texto).', hint: 'O "tipo" deve ser numérico. Estes campos não são tratados como colunas.' },
-    COLUNA_DUPLICADA:  { g: 'Conteúdo', sev: 'aviso', title: 'Colunas com nome repetido', meaning: 'Duas ou mais colunas têm o mesmo "name". Só a primeira foi mantida.', hint: 'Colunas repetidas costumam indicar erro no SQL ou na exportação.' },
-    MUITAS_COLUNAS:    { g: 'Conteúdo', sev: 'aviso', title: 'Quantidade de colunas muito alta', meaning: 'A consulta retorna mais de 250 colunas.', hint: 'Funciona, mas é raro. Confira se a consulta é essa mesma.' },
-    PARAM_SEM_CAMPO:   { g: 'Conteúdo', sev: 'aviso', title: 'Filtro usado no SQL sem definição', meaning: 'O SQL usa um parâmetro (:nome) que não tem campo correspondente em "field".', hint: 'O filtro aparece com o tipo "data" por padrão. Confira se o tipo e o nome estão certos.' },
-    PARAM_NAO_USADO:   { g: 'Conteúdo', sev: 'aviso', title: 'Filtro definido mas não usado no SQL', meaning: 'Há um campo de filtro (:nome) em "field" que o SQL não utiliza.', hint: 'Pode ser sobra de edição. Confira se o filtro deveria estar no SQL.' },
-    PARAM_EM_TEXTO:    { g: 'Conteúdo', sev: 'aviso', title: 'Possível filtro falso (dentro de texto ou comentário)', meaning: 'Um ":nome" aparece só dentro de um texto entre aspas ou de um comentário do SQL.', hint: 'Foi contado como filtro, mas pode não ser um. Se não for, ignore.' },
-    QUERY_SEM_COMANDO: { g: 'Conteúdo', sev: 'aviso', title: 'SQL sem comando reconhecido', meaning: 'Não encontrei SELECT, WITH, CALL ou outro comando SQL no texto.', hint: 'Confira se o campo "query" tem mesmo o SQL.' },
-    COMANDO_ESCRITA:   { g: 'Conteúdo', sev: 'aviso', title: 'SQL que altera dados', meaning: 'O SQL tem comando de escrita (INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, MERGE, CREATE, GRANT ou REVOKE).', hint: 'Consultas da biblioteca costumam ser só de leitura. Confirme se é intencional antes de publicar para o time.' },
-    MULTIPLOS_COMANDOS:{ g: 'Conteúdo', sev: 'aviso', title: 'Mais de um comando SQL', meaning: 'Há vários comandos separados por ponto e vírgula.', hint: 'Consultas dinâmicas costumam ter um único comando. Confira se está correto.' },
-    QUERY_GRANDE:      { g: 'Conteúdo', sev: 'aviso', title: 'SQL muito grande', meaning: 'O SQL tem mais de 200 mil caracteres.', hint: 'Funciona, mas é muito incomum. Confira o arquivo.' },
-
-    /* ----- Duplicidade ----- */
-    DUP_LOTE:       { g: 'Duplicidade', sev: 'aviso', title: 'Nome de arquivo repetido no mesmo envio', meaning: 'Dois arquivos do envio tinham o mesmo nome. Os dois foram importados e o segundo foi renomeado.', hint: 'Confira se são mesmo consultas diferentes.' },
-    MESMO_SQL:      { g: 'Duplicidade', sev: 'aviso', title: 'SQL idêntico ao de outra consulta', meaning: 'O SQL é igual ao de outra consulta (do mesmo envio ou já cadastrada).', hint: 'Pode ser cópia. Se for, considere manter só uma.' },
-    NOME_REPETIDO:  { g: 'Duplicidade', sev: 'aviso', title: 'Nome igual ao de outra consulta', meaning: 'Existe outra consulta com o mesmo nome, mas com SQL diferente.', hint: 'Renomeie para o time conseguir distinguir as duas na busca.' },
-    ATUALIZADA:     { g: 'Duplicidade', sev: 'info', title: 'Consulta existente atualizada', meaning: 'Já havia uma consulta com o mesmo nome de arquivo. O JSON foi atualizado; categorias, descrição e destaques foram mantidos.', hint: 'Nenhuma ação necessária. Se não era para atualizar, não publique.' }
-  };
-
-  function mk(code, detail, extra) {
-    var def = ISSUES[code] || { sev: 'erro', title: code, hint: '' };
-    var it = { code: code, sev: def.sev, title: def.title, hint: def.hint, detail: detail || '' };
-    if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) it[k] = extra[k];
-    return it;
-  }
-
-  function isError(it) { return it.sev === 'erro'; }
-
-  function describe(v) {
-    if (v === null) return 'nulo (null)';
-    if (Array.isArray(v)) return 'uma lista com ' + v.length + ' item(ns)';
-    if (typeof v === 'object') return 'um objeto';
-    if (typeof v === 'string') return 'um texto';
-    if (typeof v === 'number') return 'um número';
-    if (typeof v === 'boolean') return 'um valor verdadeiro/falso';
-    return 'um valor desconhecido';
-  }
-
-  function listNames(arr, max) {
-    var shown = arr.slice(0, max || 8).join(', ');
-    return arr.length > (max || 8) ? shown + ' e mais ' + (arr.length - (max || 8)) : shown;
-  }
-
-  /* ----- Diagnóstico de JSON inválido ----- */
-  function lineCol(text, pos) {
-    var lines = text.slice(0, pos).split('\n');
-    return { line: lines.length, col: lines[lines.length - 1].length + 1 };
-  }
-
-  function posFromLineCol(text, line, col) {
-    var lines = text.split('\n'), p = 0;
-    for (var i = 0; i < line - 1 && i < lines.length; i++) p += lines[i].length + 1;
-    return p + col - 1;
-  }
-
-  function snippetAt(text, pos) {
-    var a = Math.max(0, pos - 45), b = Math.min(text.length, pos + 45);
-    var s = text.slice(a, pos) + '\u27E6' + (text.charAt(pos) || '\u220E') + '\u27E7' + text.slice(pos + 1, b);
-    return (a > 0 ? '\u2026' : '') + s.replace(/\r?\n/g, '\u21B5') + (b < text.length ? '\u2026' : '');
-  }
-
-  function tryParse(t) { try { JSON.parse(t); return true; } catch (e) { return false; } }
-
-  function stripJsonComments(t) {
-    var out = '', inStr = false, esc = false, i = 0;
-    while (i < t.length) {
-      var c = t.charAt(i), d = t.charAt(i + 1);
-      if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; i++; continue; }
-      if (c === '"') { inStr = true; out += c; i++; continue; }
-      if (c === '/' && d === '/') { while (i < t.length && t.charAt(i) !== '\n') i++; continue; }
-      if (c === '/' && d === '*') { var e = t.indexOf('*/', i + 2); i = e < 0 ? t.length : e + 2; continue; }
-      out += c; i++;
-    }
-    return out;
-  }
-
-  function escapeControlInStrings(t) {
-    var out = '', inStr = false, esc = false;
-    for (var i = 0; i < t.length; i++) {
-      var c = t.charAt(i), code = t.charCodeAt(i);
-      if (inStr) {
-        if (esc) { out += c; esc = false; continue; }
-        if (c === '\\') { out += c; esc = true; continue; }
-        if (c === '"') { inStr = false; out += c; continue; }
-        if (code < 32) { out += code === 10 ? '\\n' : code === 13 ? '\\r' : code === 9 ? '\\t' : ' '; continue; }
-        out += c;
-      } else { if (c === '"') inStr = true; out += c; }
-    }
-    return out;
-  }
-
-  var REPAIRS = {
-    virgula:   function (t) { return t.replace(/,(\s*[}\]])/g, '$1'); },
-    comentario: stripJsonComments,
-    aspas:     function (t) { return t.replace(/'/g, '"'); },
-    chave:     function (t) { return t.replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":'); },
-    valor:     function (t) { return t.replace(/\b(NaN|undefined|-?Infinity)\b/g, 'null'); },
-    quebra:    escapeControlInStrings,
-    escape:    function (t) { return t.replace(/\\(?!["\\\/bfnrtu])/g, '\\\\'); },
-    multiplos: function (t) { return '[' + t.replace(/}\s*{/g, '},{') + ']'; }
-  };
-
-  function diagnoseJson(text, err) {
-    var msg = String((err && err.message) || err);
-    var body = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
-    var trimmed = body.trim(), pos = null, m;
-    if ((m = msg.match(/position (\d+)/))) pos = Number(m[1]);
-    else if ((m = msg.match(/line (\d+) column (\d+)/))) pos = posFromLineCol(body, Number(m[1]), Number(m[2]));
-    var lc = pos != null ? lineCol(body, pos) : null;
-    var where = lc ? ' (linha ' + lc.line + ', coluna ' + lc.col + ')' : '';
-    var base = { tech: msg, line: lc ? lc.line : null, col: lc ? lc.col : null, snippet: pos != null ? snippetAt(body, pos) : '' };
-    var first = trimmed.charAt(0);
-
-    function out(code, detail) { return mk(code, detail, base); }
-
-    if (first === '<') return out('JSON_HTML', 'O conteúdo começa com "<" (parece HTML).');
-    if (/^(select|with|insert|update|delete|call|exec|execute)\b/i.test(trimmed)) return out('JSON_SQL_PURO', 'O conteúdo começa com "' + trimmed.split(/\s+/)[0].toUpperCase() + '", um comando SQL.');
-    if (first !== '{' && first !== '[') return out('JSON_TEXTO_LIVRE', 'O conteúdo começa com "' + trimmed.slice(0, 20).replace(/\s+/g, ' ') + '" em vez de {.');
-    if (/end of (json )?(input|data)|unexpected end|unexpected eof/i.test(msg) || (/unterminated string/i.test(msg) && pos != null && pos >= trimmed.length - 1) || (pos != null && pos >= trimmed.length)) {
-      return out('JSON_TRUNCADO', 'O arquivo termina antes de o JSON ser fechado (' + trimmed.length + ' caracteres lidos).');
-    }
-    if (tryParse(REPAIRS.comentario(body))) return out('JSON_COMENTARIO', 'Foram encontrados comentários no arquivo' + where + '.');
-    if (tryParse(REPAIRS.virgula(body))) return out('JSON_VIRGULA', 'Há uma vírgula sobrando antes de } ou ]' + where + '.');
-    if (tryParse(REPAIRS.multiplos(body))) return out('JSON_MULTIPLOS', 'O arquivo tem mais de um objeto JSON seguido' + where + '.');
-    if (tryParse(REPAIRS.quebra(body))) return out('JSON_QUEBRA_LINHA', 'Há quebra de linha real dentro de um texto entre aspas' + where + '.');
-    if (tryParse(REPAIRS.escape(body))) return out('JSON_ESCAPE', 'Há uma barra invertida sem escape dentro de um texto' + where + '.');
-    if (tryParse(REPAIRS.valor(body))) return out('JSON_VALOR_INVALIDO', 'O arquivo usa undefined, NaN ou Infinity' + where + '.');
-    if (tryParse(REPAIRS.chave(body))) return out('JSON_CHAVE_SEM_ASPAS', 'Há um nome de campo sem aspas' + where + '.');
-    if (tryParse(REPAIRS.aspas(body))) return out('JSON_ASPAS', 'O arquivo usa aspas simples' + where + '.');
-    var combined = REPAIRS.virgula(REPAIRS.chave(REPAIRS.aspas(REPAIRS.comentario(body))));
-    if (tryParse(combined)) return out('JSON_FORMATO_JS', 'O conteúdo parece um objeto JavaScript' + where + '.');
-    if (/control character|unterminated|newline/i.test(msg)) return out('JSON_QUEBRA_LINHA', 'Há um caractere de controle ou texto sem fechamento' + where + '.');
-    if (/escape/i.test(msg)) return out('JSON_ESCAPE', 'Há um caractere de escape inválido' + where + '.');
-    return out('JSON_SINTAXE', 'O JSON tem um erro de sintaxe' + where + '.');
-  }
-
-  /* ----- SQL: remove comentários e textos para analisar o que sobra ----- */
-  function stripSql(sql, keepStrings) {
-    var out = '', i = 0, n = sql.length;
-    while (i < n) {
-      var c = sql.charAt(i), d = sql.charAt(i + 1);
-      if (c === '-' && d === '-') { while (i < n && sql.charAt(i) !== '\n') i++; out += ' '; continue; }
-      if (c === '/' && d === '*') { var e = sql.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; out += ' '; continue; }
-      if (c === "'") {
-        var start = i; i++;
-        while (i < n) {
-          if (sql.charAt(i) === '\\') { i += 2; continue; }
-          if (sql.charAt(i) === "'" && sql.charAt(i + 1) === "'") { i += 2; continue; }
-          if (sql.charAt(i) === "'") { i++; break; }
-          i++;
-        }
-        out += keepStrings ? sql.slice(start, i) : "''";
-        continue;
-      }
-      out += c; i++;
-    }
-    return out;
-  }
-
-  function paramsOf(sql) {
-    var list = [], re = /(^|[^:]):([A-Za-z_][A-Za-z0-9_]*)/g, m;
-    while ((m = re.exec(sql)) !== null) { if (list.indexOf(m[2]) === -1) list.push(m[2]); }
-    return list;
-  }
-
-  function normalizeSql(sql) { return stripSql(String(sql || ''), true).replace(/\s+/g, ' ').trim().toLowerCase(); }
-  function newId() { return 'q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
-
-  function looksLikeConsulta(x) {
-    return !!x && typeof x === 'object' && !Array.isArray(x) && typeof x.query === 'string' && Array.isArray(x.field);
-  }
-
-  function findKey(obj, candidates) {
-    var keys = Object.keys(obj), found = null;
-    keys.forEach(function (k) {
-      if (found) return;
-      if (candidates.indexOf(k.toLowerCase()) !== -1 && candidates.indexOf(k) === -1) found = k;
-      else if (candidates.indexOf(k.toLowerCase()) !== -1 && k !== candidates[0]) found = k;
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy') ? resolve() : reject(new Error('copy')); } catch (err) { reject(err); }
+      ta.remove();
     });
-    return found;
   }
 
-  /* ----- Monta a consulta e acumula os avisos ----- */
-  function buildQuery(data, fileName, issues) {
-    var fields = data.field, nonObj = [], noName = [], noTipo = [], badTipo = [], dups = [], seen = {}, cols = [], declared = {};
-
-    fields.forEach(function (f, i) {
-      if (!f || typeof f !== 'object' || Array.isArray(f)) { nonObj.push(i + 1); return; }
-      var nm = (typeof f.name === 'string' || typeof f.name === 'number') ? String(f.name).trim() : '';
-      var hasTipo = f.tipo !== undefined && f.tipo !== null && f.tipo !== '';
-      var tipo = Number(f.tipo);
-      if (hasTipo && isNaN(tipo)) badTipo.push(nm || ('posição ' + (i + 1)));
-      if (!hasTipo && nm && nm.charAt(0) !== ':') noTipo.push(nm);
-      if (nm && (nm.charAt(0) === ':' || !(hasTipo && tipo === 1))) declared[nm.replace(/^:/, '').toLowerCase()] = true;
-      if (hasTipo && tipo === 1) {
-        if (!nm) { noName.push(i + 1); return; }
-        if (seen[nm]) { if (dups.indexOf(nm) === -1) dups.push(nm); return; }
-        seen[nm] = true;
-        var title = (typeof f.title === 'string' || typeof f.title === 'number') ? f.title : '';
-        cols.push({ name: nm, label: humanize(nm, title), type: String(f.typeField || 'text') });
-      }
-    });
-
-    var sql = data.query, rawParams = paramsOf(sql), cleanParams = paramsOf(stripSql(sql));
-    var filters = rawParams.map(function (p) {
-      var f = fields.filter(function (x) {
-        return x && typeof x === 'object' && String(x.name || '').replace(/^:/, '').toLowerCase() === p.toLowerCase();
-      })[0] || {};
-      var title = (typeof f.title === 'string' || typeof f.title === 'number') ? f.title : '';
-      return { name: ':' + p, label: humanize(p, title), type: String(f.typeField || 'date') };
-    });
-
-    // --- avisos
-    if (fields.length === 0) issues.push(mk('FIELD_VAZIO', 'A lista "field" não tem nenhum item.'));
-    else if (cols.length === 0) issues.push(mk('SEM_COLUNAS', 'Nenhum dos ' + fields.length + ' campos tem tipo 1 (coluna).'));
-    if (nonObj.length) issues.push(mk('FIELD_ITEM_INVALIDO', nonObj.length + ' item(ns) de "field" não são objetos (posições: ' + listNames(nonObj) + ').'));
-    if (noName.length) issues.push(mk('CAMPO_SEM_NOME', noName.length + ' coluna(s) sem "name" (posições: ' + listNames(noName) + ').'));
-    if (noTipo.length) issues.push(mk('CAMPO_SEM_TIPO', noTipo.length + ' campo(s) sem "tipo": ' + listNames(noTipo) + '.'));
-    if (badTipo.length) issues.push(mk('CAMPO_TIPO_INVALIDO', 'Campo(s) com "tipo" que não é número: ' + listNames(badTipo) + '.'));
-    if (dups.length) issues.push(mk('COLUNA_DUPLICADA', 'Colunas repetidas (só a primeira foi mantida): ' + listNames(dups) + '.'));
-    if (cols.length > WARN_COLUMNS) issues.push(mk('MUITAS_COLUNAS', 'A consulta tem ' + cols.length + ' colunas.'));
-
-    var semCampo = rawParams.filter(function (p) { return !declared[p.toLowerCase()]; });
-    if (semCampo.length) issues.push(mk('PARAM_SEM_CAMPO', 'Parâmetro(s) usados no SQL sem campo em "field": ' + semCampo.map(function (p) { return ':' + p; }).join(', ') + '.'));
-
-    var emTexto = rawParams.filter(function (p) { return cleanParams.indexOf(p) === -1; });
-    if (emTexto.length) issues.push(mk('PARAM_EM_TEXTO', 'Só aparece dentro de texto ou comentário: ' + emTexto.map(function (p) { return ':' + p; }).join(', ') + '.'));
-
-    var naoUsados = fields.filter(function (f) {
-      return f && typeof f === 'object' && typeof f.name === 'string' && f.name.charAt(0) === ':' && rawParams.map(function (p) { return p.toLowerCase(); }).indexOf(f.name.slice(1).toLowerCase()) === -1;
-    }).map(function (f) { return f.name; });
-    if (naoUsados.length) issues.push(mk('PARAM_NAO_USADO', 'Filtro(s) definidos e não usados no SQL: ' + listNames(naoUsados) + '.'));
-
-    var clean = stripSql(sql);
-    if (!/\b(select|with|insert|update|delete|call|exec|execute|show|values|table|merge|explain|create|drop|alter|truncate)\b/i.test(clean)) {
-      issues.push(mk('QUERY_SEM_COMANDO', 'Não foi encontrado nenhum comando SQL no texto de "query".'));
+  /* ---------- Aviso (toast), com ação opcional ---------- */
+  var toastTimer;
+  function toast(message, opts) {
+    opts = opts || {};
+    var el = $('toast'), txt = $('toastText'), act = $('toastAction');
+    txt.textContent = message;
+    if (opts.action && opts.onAction) {
+      act.textContent = opts.action;
+      act.classList.remove('hidden');
+      act.onclick = function () { el.classList.remove('is-visible'); opts.onAction(); };
+    } else {
+      act.classList.add('hidden');
+      act.onclick = null;
     }
-    var writes = clean.match(/\b(insert|update|delete|drop|truncate|alter|merge|create|grant|revoke)\b/gi);
-    if (writes) {
-      var uniq = []; writes.forEach(function (w) { w = w.toUpperCase(); if (uniq.indexOf(w) === -1) uniq.push(w); });
-      issues.push(mk('COMANDO_ESCRITA', 'Comando(s) encontrados: ' + uniq.join(', ') + '.'));
-    }
-    if (/;\s*\S/.test(clean.trim())) issues.push(mk('MULTIPLOS_COMANDOS', 'Há texto depois de um ponto e vírgula, o que indica mais de um comando.'));
-    if (sql.length > WARN_QUERY_CHARS) issues.push(mk('QUERY_GRANDE', 'O SQL tem ' + sql.length + ' caracteres.'));
+    el.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('is-visible'); }, opts.ms || (opts.action ? 9000 : 4200));
+  }
 
-    var name;
-    if (typeof data.name === 'string' && data.name.trim()) name = data.name.trim();
-    else {
-      name = fileName.replace(/\.json$/i, '');
-      if (data.name === undefined || data.name === null || data.name === '') issues.push(mk('NOME_AUSENTE', 'Foi usado o nome do arquivo: "' + name + '".'));
-      else issues.push(mk('NOME_TIPO', 'O campo "name" é ' + describe(data.name) + '. Foi usado o nome do arquivo: "' + name + '".'));
-    }
-    if (name.length < 3) issues.push(mk('NOME_CURTO', 'O nome "' + name + '" tem ' + name.length + ' caractere(s).'));
-    if (name.length > 160) issues.push(mk('NOME_LONGO', 'O nome tem ' + name.length + ' caracteres.'));
+  /* ---------- Pop-ups com animação de entrada e saída ---------- */
+  function openModal(dlg) {
+    dlg._closing = false;                 // cancela um fechamento em andamento
+    dlg.classList.remove('is-closing');
+    if (!dlg.open) dlg.showModal();
+  }
 
-    return {
-      id: newId(),
-      name: name,
-      categories: guessCategories(name),
-      description: '',
-      source_filename: fileName,
-      columns: cols,
-      primary_columns: cols.slice(0, 3).map(function (c) { return c.name; }),
-      required_filters: filters,
-      created_at: Date.now(),
-      raw_json: data
+  function closeModal(dlg) {
+    if (!dlg || !dlg.open || dlg._closing) return;
+    if (reducedMotion()) { dlg.close(); return; }
+    dlg._closing = true;
+    dlg.classList.add('is-closing');
+    var done = function () {
+      if (!dlg._closing) return;          // foi reaberto no meio da animação
+      dlg._closing = false;
+      dlg.classList.remove('is-closing');
+      if (dlg.open) dlg.close();
     };
+    dlg.addEventListener('animationend', function handler(e) {
+      if (e.target !== dlg) return;
+      dlg.removeEventListener('animationend', handler);
+      done();
+    });
+    setTimeout(done, 360);
   }
 
-  /* ----- Valida o conteúdo já convertido de JSON ----- */
-  function analyzeData(data, fileName) {
-    var issues = [];
-    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-      issues.push(mk('RAIZ_TIPO', 'O conteúdo é ' + describe(data) + ', mas era esperado um objeto { ... }.'));
-      return { q: null, issues: issues };
-    }
-    var hasQ = data.query !== undefined, hasF = data.field !== undefined;
-
-    if (!hasQ && !hasF) {
-      var inner = Object.keys(data).filter(function (k) { return looksLikeConsulta(data[k]); })[0];
-      if (inner) {
-        issues.push(mk('RAIZ_ENCAPSULADA', 'A consulta está dentro da chave "' + inner + '".'));
-        return { q: null, issues: issues };
-      }
-    }
-
-    if (!hasQ) {
-      var altQ = findKey(data, ['query', 'sql', 'consulta', 'script', 'statement', 'querytext', 'query_text']);
-      issues.push(mk('QUERY_AUSENTE', 'O arquivo não tem o campo "query".' + (Object.keys(data).length ? ' Campos encontrados: ' + listNames(Object.keys(data), 10) + '.' : ' O objeto está vazio.'),
-        altQ ? { hint: 'Encontrei a chave "' + altQ + '", mas o campo esperado se chama "query". Confira se este é o arquivo exportado da consulta dinâmica.' } : null));
-    } else if (typeof data.query !== 'string') {
-      issues.push(mk('QUERY_TIPO', 'O campo "query" é ' + describe(data.query) + '.'));
-    } else if (!data.query.trim()) {
-      issues.push(mk('QUERY_VAZIA', 'O campo "query" tem só espaços ou está em branco.'));
-    }
-
-    if (!hasF) {
-      var altF = findKey(data, ['field', 'fields', 'campos', 'columns', 'colunas']);
-      issues.push(mk('FIELD_AUSENTE', 'O arquivo não tem o campo "field".',
-        altF ? { hint: 'Encontrei a chave "' + altF + '", mas o campo esperado se chama "field". Confira se este é o arquivo exportado da consulta dinâmica.' } : null));
-    } else if (!Array.isArray(data.field)) {
-      issues.push(mk('FIELD_TIPO', 'O campo "field" é ' + describe(data.field) + '.'));
-    }
-
-    if (issues.some(isError)) return { q: null, issues: issues };
-    return { q: buildQuery(data, fileName, issues), issues: issues };
+  /* ---------- Biblioteca ---------- */
+  function fetchLibrary() {
+    return fetch(DATA_URL, { cache: 'no-cache' }).then(function (res) {
+      if (res.status === 401) { window.location.replace('/login.html'); throw new Error('Sessão expirada.'); }
+      if (!res.ok) throw new Error('Não foi possível carregar a biblioteca.');
+      return res.json();
+    }).then(function (data) { return Array.isArray(data) ? data : []; });
   }
 
-  function normalizeLibraryItem(item, i) {
-    var label = 'Item ' + (i + 1) + ': ';
-    if (!item || typeof item !== 'object' || !item.raw_json || typeof item.raw_json !== 'object') {
-      return { q: null, issues: [mk('BIBLIOTECA_ITEM', label + 'não tem "raw_json" válido.')] };
-    }
-    var fname = typeof item.source_filename === 'string' && item.source_filename ? item.source_filename : 'item_' + (i + 1) + '.json';
-    var res = analyzeData(item.raw_json, fname);
-    if (!res.q) { res.issues.forEach(function (x) { x.detail = label + x.detail; }); return res; }
-    var q = res.q;
-    if (item.id) q.id = String(item.id);
-    if (typeof item.name === 'string' && item.name.trim()) q.name = item.name.trim();
-    if (Array.isArray(item.categories) && item.categories.length) q.categories = item.categories.slice(0, 3).map(String);
-    if (typeof item.description === 'string') q.description = item.description;
-    if (item.created_at) q.created_at = item.created_at;
-    if (Array.isArray(item.columns)) {
-      var labels = {}; item.columns.forEach(function (c) { if (c && c.name && c.label) labels[c.name] = c.label; });
-      q.columns.forEach(function (c) { if (labels[c.name]) c.label = labels[c.name]; });
-    }
-    if (Array.isArray(item.primary_columns)) {
-      var names = q.columns.map(function (c) { return c.name; });
-      var keep = item.primary_columns.filter(function (n) { return names.indexOf(n) !== -1; });
-      if (keep.length) q.primary_columns = keep.slice(0, 4);
-    }
-    res.issues.forEach(function (x) { x.detail = label + x.detail; });
-    return res;
+  function loadUser() {
+    fetch('/api/me', { cache: 'no-store' }).then(function (res) {
+      if (res.status === 401) { window.location.replace('/login.html'); return null; }
+      return res.ok ? res.json() : null;
+    }).then(function (user) {
+      if (!user) return;
+      if (ADMIN && user.role !== 'admin') { window.location.replace('/'); return; }
+      state.user = user;
+      $('userEmail').textContent = user.email;
+      $('userBox').classList.remove('hidden');
+      var adminLink = $('adminLink');
+      if (adminLink && user.role === 'admin') adminLink.classList.remove('hidden');
+    }).catch(function () { /* sem /api (ex.: Live Server): segue sem mostrar o usuário */ });
   }
 
-  /* ----- Entrada principal: texto de um arquivo .json ----- */
-  // Retorna { results: [{ q, keep, issues }], issues: [problemas do arquivo, sem consulta] }
-  function inspectText(text, fileName) {
-    var pre = [];
-    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-    if (!text.trim()) return { results: [], issues: [mk('ARQ_VAZIO', 'O arquivo não tem conteúdo.')] };
-    if (text.length > MAX_FILE_CHARS) return { results: [], issues: [mk('ARQ_GRANDE', 'O arquivo tem ' + (text.length / 1048576).toFixed(1) + ' MB e o limite é 8 MB.')] };
-    if (text.indexOf('\uFFFD') !== -1) pre.push(mk('ARQ_ENCODING', 'O texto contém o caractere � (acentos perdidos).'));
-    if (text.length > WARN_FILE_CHARS) pre.push(mk('ARQ_PESADO', 'O arquivo tem ' + (text.length / 1048576).toFixed(1) + ' MB.'));
-
-    var data;
-    try { data = JSON.parse(text); } catch (err) { return { results: [], issues: pre.concat([diagnoseJson(text, err)]) }; }
-
-    if (Array.isArray(data)) {
-      var isLib = data.length > 0 && data.some(function (x) { return x && typeof x === 'object' && x.raw_json && typeof x.raw_json === 'object'; });
-      var anyQ = data.length > 0 && data.some(looksLikeConsulta);
-      var results = [], issues = pre.slice();
-      if (isLib) {
-        data.forEach(function (item, i) {
-          var r = normalizeLibraryItem(item, i);
-          if (r.q) results.push({ q: r.q, keep: true, issues: r.issues }); else issues = issues.concat(r.issues);
-        });
-        return { results: results, issues: issues };
-      }
-      if (anyQ) {
-        var stem = fileName.replace(/\.json$/i, '');
-        data.forEach(function (item, i) {
-          var r = analyzeData(item, stem + '_' + (i + 1) + '.json');
-          r.issues.forEach(function (x) { x.detail = 'Item ' + (i + 1) + ': ' + x.detail; });
-          if (r.q) results.push({ q: r.q, keep: false, issues: r.issues }); else issues = issues.concat(r.issues);
-        });
-        issues.push(mk('LISTA_EXPANDIDA', 'O arquivo tinha ' + data.length + ' consultas; cada uma virou uma consulta separada.'));
-        return { results: results, issues: issues };
-      }
-      var sample = data.length ? 'O primeiro item é ' + describe(data[0]) + '.' : 'A lista está vazia.';
-      return { results: [], issues: pre.concat([mk('RAIZ_LISTA', 'O arquivo é uma lista com ' + data.length + ' item(ns). ' + sample)]) };
-    }
-
-    var res = analyzeData(data, fileName);
-    if (!res.q) return { results: [], issues: pre.concat(res.issues) };
-    return { results: [{ q: res.q, keep: false, issues: pre.concat(res.issues) }], issues: [] };
+  function logout() {
+    fetch('/api/logout', { method: 'POST' }).finally(function () { window.location.replace('/login.html'); });
   }
 
   /* ---------- Favoritas (somente no navegador de cada pessoa) ---------- */
@@ -577,106 +207,162 @@
   function toggleFav(id) {
     if (state.favs[id]) delete state.favs[id]; else state.favs[id] = true;
     try { localStorage.setItem(FAV_KEY, JSON.stringify(state.favs)); } catch (err) { /* sem espaço: ignora */ }
-    renderAll();
+    var on = !!state.favs[id];
+    var btn = document.querySelector('.query-card[data-id="' + cssEsc(id) + '"] [data-action="fav"]');
+    if (btn) { btn.classList.toggle('is-on', on); btn.textContent = on ? '★' : '☆'; }
+    if (state.openId === id) updateFavButton();
+    recount();
+    renderChips();
+    if (state.onlyFav) renderList();
   }
 
-  /* ---------- Rascunho do admin (guardado no navegador até publicar) ---------- */
-  function loadDraft() {
-    try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (err) { return null; }
+  function cssEsc(v) { return (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/"/g, '\\"'); }
+
+  /* ---------- Busca: índice em cache e sintaxe avançada ---------- */
+  var indexCache = new WeakMap();
+
+  function getIndex(q) {
+    var ix = indexCache.get(q);
+    if (ix) return ix;
+    var cols = (q.columns || []).map(function (c) { return normalize(c.name + ' ' + c.label); });
+    var fils = (q.required_filters || []).map(function (f) { return normalize(f.name + ' ' + f.label); });
+    var head = normalize([q.name, q.description, (q.categories || []).join(' '), q.num ? '#' + q.num : '', q.source_filename].join(' '));
+    ix = { head: head, cols: cols, fils: fils, all: head + ' ' + cols.join(' ') + ' ' + fils.join(' ') };
+    indexCache.set(q, ix);
+    return ix;
   }
 
-  function saveDraft() {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ queries: state.queries, dirty: state.dirty }));
-    } catch (err) {
-      toast('O rascunho é grande demais para o navegador. Publique logo para não perder as alterações.');
-    }
-  }
+  function invalidate(q) { indexCache.delete(q); }
 
-  // Chamado depois de qualquer alteração na biblioteca
-  function changed() {
-    if (ADMIN) { state.dirty = true; saveDraft(); }
-    renderAll();
-  }
-
-  /* ---------- Carregamento da biblioteca ---------- */
-  function fetchLibrary() {
-    return fetch(DATA_URL, { cache: 'no-store' }).then(function (res) {
-      if (res.status === 401) { window.location.replace('/login.html'); throw new Error('Sessão expirada.'); }
-      if (!res.ok) throw new Error('Não foi possível carregar a biblioteca.');
-      return res.json();
-    }).then(function (data) { return Array.isArray(data) ? data : []; });
-  }
-
-  function init() {
-    loadUser();
-    loadFavs();
-    if (ADMIN) loadReport();
-
-    if (ADMIN) {
-      var draft = loadDraft();
-      if (draft && Array.isArray(draft.queries) && (draft.queries.length || draft.dirty)) {
-        state.queries = draft.queries;
-        state.dirty = !!draft.dirty;
-        renderAll();
-        return;
+  function parseSearch(raw) {
+    var s = { terms: [], cols: [], fils: [], ids: null, cat: [], active: false };
+    var text = String(raw || '').trim();
+    if (!text) return s;
+    s.active = true;
+    if (/^(#?\d+[\s,;]*)+$/.test(text)) { s.ids = (text.match(/\d+/g) || []).map(Number); return s; }
+    var tokens = text.match(/(?:[^\s":]+:)?"[^"]*"|\S+/g) || [];
+    tokens.forEach(function (t) {
+      var m = t.match(/^(coluna|col|filtro|id|cat|categoria):(.*)$/i);
+      if (m) {
+        var key = m[1].toLowerCase(), val = m[2].replace(/^"|"$/g, '').trim();
+        if (!val) return;
+        if (key === 'coluna' || key === 'col') s.cols.push(normalize(val));
+        else if (key === 'filtro') s.fils.push(normalize(val));
+        else if (key === 'id') s.ids = (s.ids || []).concat((val.match(/\d+/g) || []).map(Number));
+        else s.cat.push(normalize(val));
+      } else if (/^#\d+$/.test(t)) {
+        s.ids = (s.ids || []).concat([Number(t.slice(1))]);
+      } else {
+        s.terms.push(normalize(t.replace(/^"|"$/g, '')));
       }
-    }
-
-    fetchLibrary()
-      .then(function (list) { state.queries = list; })
-      .catch(function (err) { toast(err.message); })
-      .then(renderAll);
-  }
-
-  /* ---------- Sessão (login com Google, ativo apenas no site publicado) ---------- */
-  function loadUser() {
-    fetch('/api/me', { cache: 'no-store' }).then(function (res) {
-      if (res.status === 401) { window.location.replace('/login.html'); return null; }
-      return res.ok ? res.json() : null;
-    }).then(function (user) {
-      if (!user) return;
-      if (ADMIN && user.role !== 'admin') { window.location.replace('/'); return; }
-      $('userEmail').textContent = user.email;
-      $('userBox').classList.remove('hidden');
-      var adminLink = $('adminLink');
-      if (adminLink && user.role === 'admin') adminLink.classList.remove('hidden');
-    }).catch(function () { /* sem /api (ex.: Live Server): segue sem mostrar o usuário */ });
-  }
-
-  function logout() {
-    fetch('/api/logout', { method: 'POST' }).finally(function () {
-      window.location.replace('/login.html');
     });
+    return s;
   }
 
-  /* ---------- Renderização: lista ---------- */
-  function findQuery(id) {
-    return state.queries.filter(function (q) { return q.id === id; })[0];
+  function anyHit(list, needle) {
+    for (var i = 0; i < list.length; i++) if (list[i].indexOf(needle) !== -1) return true;
+    return false;
+  }
+
+  function matchesSearch(q, s) {
+    if (!s.active) return true;
+    if (s.ids && s.ids.length && s.ids.indexOf(Number(q.num)) === -1) return false;
+    var ix = getIndex(q), i;
+    for (i = 0; i < s.terms.length; i++) if (ix.all.indexOf(s.terms[i]) === -1) return false;
+    for (i = 0; i < s.cols.length; i++) if (!anyHit(ix.cols, s.cols[i])) return false;
+    for (i = 0; i < s.fils.length; i++) if (!anyHit(ix.fils, s.fils[i])) return false;
+    for (i = 0; i < s.cat.length; i++) if (!anyHit((q.categories || []).map(normalize), s.cat[i])) return false;
+    return true;
+  }
+
+  function highlight(text, terms) {
+    text = String(text == null ? '' : text);
+    if (!terms || !terms.length) return esc(text);
+    var nt = normalize(text);
+    if (nt.length !== text.length) return esc(text);
+    var ranges = [];
+    terms.forEach(function (t) {
+      if (!t) return;
+      var i = 0;
+      while ((i = nt.indexOf(t, i)) !== -1) { ranges.push([i, i + t.length]); i += t.length; }
+    });
+    if (!ranges.length) return esc(text);
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [ranges[0]];
+    for (var k = 1; k < ranges.length; k++) {
+      var last = merged[merged.length - 1];
+      if (ranges[k][0] <= last[1]) last[1] = Math.max(last[1], ranges[k][1]); else merged.push(ranges[k]);
+    }
+    var out = '', pos = 0;
+    merged.forEach(function (r) {
+      out += esc(text.slice(pos, r[0])) + '<mark>' + esc(text.slice(r[0], r[1])) + '</mark>';
+      pos = r[1];
+    });
+    return out + esc(text.slice(pos));
+  }
+
+  /* ---------- Filtros, ordenação e contagens ---------- */
+  var collator = (window.Intl && Intl.Collator) ? new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' }) : null;
+  function cmpName(a, b) { return collator ? collator.compare(a.name, b.name) : a.name.localeCompare(b.name, 'pt-BR'); }
+  function stamp(q) { return q.updated_at || q.created_at || 0; }
+
+  function selectedCats() { return Object.keys(state.cats); }
+
+  function hasFilters() {
+    return !!(state.search.trim() || selectedCats().length || state.onlyFav || state.review);
   }
 
   function visibleQueries() {
-    var term = normalize(state.search);
-
+    var s = state.sq || (state.sq = parseSearch(state.search));
+    var sel = selectedCats(), all = state.catMode === 'all';
     var list = state.queries.filter(function (q) {
-      var cats = q.categories || ['Outros'];
-      if (state.category === '__fav') {
-        if (!state.favs[q.id]) return false;
-      } else if (state.category && cats.indexOf(state.category) === -1) {
-        return false;
+      var cs = q.categories && q.categories.length ? q.categories : ['Outros'];
+      if (sel.length) {
+        var hit = all ? sel.every(function (c) { return cs.indexOf(c) !== -1; }) : sel.some(function (c) { return cs.indexOf(c) !== -1; });
+        if (!hit) return false;
       }
-      if (!term) return true;
-      var haystack = normalize([q.name, q.description].concat(cats).concat(
-        (q.columns || []).map(function (c) { return c.name + ' ' + c.label; })
-      ).join(' '));
-      return haystack.indexOf(term) !== -1;
+      if (state.onlyFav && !state.favs[q.id]) return false;
+      if (state.review && QH.reviewMatch && !QH.reviewMatch(q, state.review)) return false;
+      return matchesSearch(q, s);
     });
 
     list.sort(function (a, b) {
-      if (state.sort === 'recent') return (b.created_at || 0) - (a.created_at || 0);
-      return a.name.localeCompare(b.name, 'pt-BR');
+      if (state.sort === 'recent') return stamp(b) - stamp(a);
+      if (state.sort === 'id') return (a.num || 1e9) - (b.num || 1e9) || cmpName(a, b);
+      if (state.sort === 'cols') return (b.columns || []).length - (a.columns || []).length || cmpName(a, b);
+      return cmpName(a, b);
     });
     return list;
+  }
+
+  function recount() {
+    var byCat = {}, fav = 0;
+    state.queries.forEach(function (q) {
+      if (state.favs[q.id]) fav++;
+      (q.categories && q.categories.length ? q.categories : ['Outros']).forEach(function (c) { byCat[c] = (byCat[c] || 0) + 1; });
+    });
+    state.counts = { all: state.queries.length, fav: fav, byCat: byCat };
+  }
+
+  /* ---------- Cards ---------- */
+  function isNewQuery(q) { return q.created_at && Date.now() - q.created_at < NEW_DAYS * 864e5; }
+  function isUpdatedQuery(q) { return q.updated_at && q.created_at && q.updated_at - q.created_at > 6e4 && Date.now() - q.updated_at < NEW_DAYS * 864e5; }
+
+  function badgesHtml(cats) {
+    return cats.map(function (c) {
+      var d = categoryOf(c);
+      return '<span class="badge" style="background:' + d.color + ';color:' + d.fg + '">' + esc(c) + '</span>';
+    }).join('');
+  }
+
+  function stripHtml(cats) {
+    return '<div class="query-card__strip">' + cats.map(function (c) {
+      return '<span style="background:' + categoryOf(c).color + '"></span>';
+    }).join('') + '</div>';
+  }
+
+  function pillHtml(q) {
+    return isNewQuery(q) ? '<span class="pill">Nova</span>' : (isUpdatedQuery(q) ? '<span class="pill">Atualizada</span>' : '');
   }
 
   function highlightColumns(q) {
@@ -685,84 +371,121 @@
     return (q.primary_columns || []).map(function (n) { return map[n]; }).filter(Boolean).slice(0, MAX_HIGHLIGHTS);
   }
 
-  function badgesHtml(cats) {
-    return cats.map(function (c) {
-      return '<span class="badge" style="background:' + colorOf(c) + '">' + esc(c) + '</span>';
-    }).join('');
-  }
-
-  function stripHtml(cats) {
-    return '<div class="query-card__strip">' + cats.map(function (c) {
-      return '<span style="background:' + colorOf(c) + '"></span>';
-    }).join('') + '</div>';
+  // Mostra de qual coluna ou filtro veio o resultado da busca
+  function matchLine(q, s) {
+    if (!s || !(s.terms.length || s.cols.length || s.fils.length)) return '';
+    var nd = normalize(q.name + ' ' + (q.description || ''));
+    var needs = s.cols.length || s.fils.length || s.terms.some(function (t) { return nd.indexOf(t) === -1; });
+    if (!needs) return '';
+    var needles = s.terms.concat(s.cols), hits = [];
+    (q.columns || []).forEach(function (c) {
+      var cn = normalize(c.name + ' ' + c.label);
+      if (needles.some(function (t) { return cn.indexOf(t) !== -1; })) hits.push(c.name);
+    });
+    var fhits = [];
+    (q.required_filters || []).forEach(function (f) {
+      var fn = normalize(f.name + ' ' + f.label);
+      if (s.fils.concat(s.terms).some(function (t) { return fn.indexOf(t) !== -1; })) fhits.push(f.name);
+    });
+    if (!hits.length && !fhits.length) return '';
+    var parts = [];
+    if (hits.length) parts.push('Coluna: ' + hits.slice(0, 3).map(function (h) { return '<code>' + highlight(h, needles) + '</code>'; }).join(', ') + (hits.length > 3 ? ' +' + (hits.length - 3) : ''));
+    if (fhits.length) parts.push('Filtro: ' + fhits.slice(0, 3).map(function (h) { return '<code>' + highlight(h, s.fils.concat(s.terms)) + '</code>'; }).join(', '));
+    return '<div class="query-card__match">' + parts.join(' · ') + '</div>';
   }
 
   function cardHtml(q) {
+    var s = state.sq, id = esc(q.id), terms = s ? s.terms : [];
     var cats = (q.categories && q.categories.length ? q.categories : ['Outros']).slice(0, MAX_CATEGORIES);
-    var highlights = highlightColumns(q);
-    var extra = (q.columns || []).length - highlights.length;
-    var id = esc(q.id);
-    var fav = !!state.favs[q.id];
+    var hl = highlightColumns(q), extra = (q.columns || []).length - hl.length;
+    var fav = !!state.favs[q.id], sel = !!state.selected[q.id];
 
     return '' +
-      '<article class="query-card' + (state.selected[q.id] ? ' is-selected' : '') + '">' +
+      '<article class="query-card' + (sel ? ' is-selected' : '') + '" data-id="' + id + '">' +
         stripHtml(cats) +
         '<div class="query-card__main">' +
-          '<div class="badges">' + badgesHtml(cats) + '</div>' +
-          '<h3 class="query-card__title">' + esc(q.name) + '</h3>' +
-          '<p class="query-card__desc">' + esc(q.description || 'Sem descrição cadastrada.') + '</p>' +
+          '<div class="query-card__meta">' +
+            (q.num ? '<span class="qid" title="ID da consulta">' + formatId(q.num) + '</span>' : '') +
+            '<div class="badges">' + badgesHtml(cats) + '</div>' + pillHtml(q) +
+          '</div>' +
+          '<h3 class="query-card__title"><button type="button" class="query-card__open" data-action="open" data-id="' + id + '">' + highlight(q.name, terms) + '</button></h3>' +
+          '<p class="query-card__desc' + (q.description ? '' : ' is-empty') + '">' + (q.description ? highlight(q.description, terms) : 'Sem descrição cadastrada.') + '</p>' +
           '<div class="tags">' +
-            highlights.map(function (c) { return '<span class="tag">' + esc(c.label) + '</span>'; }).join('') +
+            hl.map(function (c) { return '<span class="tag">' + esc(c.label) + '</span>'; }).join('') +
             (extra > 0 ? '<span class="tag tag--more">+ ' + extra + ' campos</span>' : '') +
           '</div>' +
+          matchLine(q, s) +
         '</div>' +
         '<div class="query-card__actions">' +
-          '<label class="query-card__select" title="Selecionar"><input type="checkbox" data-select="' + id + '"' + (state.selected[q.id] ? ' checked' : '') + '></label>' +
+          '<label class="query-card__select" title="Selecionar"><input type="checkbox" data-select="' + id + '"' + (sel ? ' checked' : '') + ' aria-label="Selecionar ' + esc(q.name) + '"></label>' +
           '<button type="button" class="star-btn' + (fav ? ' is-on' : '') + '" data-action="fav" data-id="' + id + '" aria-label="Favoritar" title="Favoritar">' + (fav ? '★' : '☆') + '</button>' +
-          '<button type="button" class="link-btn" data-action="open" data-id="' + id + '">Ver colunas</button>' +
           '<button type="button" class="btn btn--primary btn--sm" data-action="download" data-id="' + id + '">Baixar JSON</button>' +
         '</div>' +
       '</article>';
   }
 
+  /* ---------- Renderização ---------- */
   function renderChips() {
-    var counts = {}, favs = 0;
-    state.queries.forEach(function (q) {
-      if (state.favs[q.id]) favs++;
-      (q.categories || ['Outros']).forEach(function (c) { counts[c] = (counts[c] || 0) + 1; });
-    });
-
-    var html = '<button type="button" class="chip' + (state.category === '' ? ' is-active' : '') + '" data-category="">' +
-      'Todas <span class="chip__count">' + state.queries.length + '</span></button>';
-
-    html += '<button type="button" class="chip' + (state.category === '__fav' ? ' is-active' : '') + '" data-category="__fav">' +
-      '★ Favoritas <span class="chip__count">' + favs + '</span></button>';
-
+    var c = state.counts, sel = state.cats, n = selectedCats().length;
+    var html = '<button type="button" class="chip' + (!n && !state.onlyFav ? ' is-active' : '') + '" data-chip="all">Todas <span class="chip__count">' + c.all + '</span></button>' +
+      '<button type="button" class="chip' + (state.onlyFav ? ' is-active' : '') + '" data-chip="fav">★ Favoritas <span class="chip__count">' + c.fav + '</span></button>';
     CATEGORIES.forEach(function (cat) {
-      html += '<button type="button" class="chip' + (state.category === cat.name ? ' is-active' : '') + '" data-category="' + esc(cat.name) + '">' +
-        '<span class="chip__dot" style="background:' + cat.color + '"></span>' + esc(cat.name) +
-        ' <span class="chip__count">' + (counts[cat.name] || 0) + '</span></button>';
+      html += '<button type="button" class="chip' + (sel[cat.name] ? ' is-active' : '') + '" data-chip="cat" data-cat="' + esc(cat.name) + '" aria-pressed="' + (sel[cat.name] ? 'true' : 'false') + '">' +
+        '<span class="chip__dot" style="background:' + cat.color + '"></span>' + esc(cat.name) + ' <span class="chip__count">' + (c.byCat[cat.name] || 0) + '</span></button>';
     });
+    if (n >= 2) {
+      html += '<span class="chip-mode" role="group" aria-label="Combinar categorias"><button type="button" data-catmode="any" class="' + (state.catMode === 'any' ? 'is-active' : '') + '">Qualquer</button>' +
+        '<button type="button" data-catmode="all" class="' + (state.catMode === 'all' ? 'is-active' : '') + '">Todas</button></span>';
+    }
     $('categoryChips').innerHTML = html;
   }
 
+  function updateResultsHead() {
+    var total = state.queries.length, n = state.view.length;
+    $('resultCount').textContent = (n === total ? n : n + ' de ' + total) + (total === 1 ? ' consulta' : ' consultas');
+    $('btnZipList').classList.toggle('hidden', !n);
+    $('btnClear').classList.toggle('hidden', !hasFilters());
+    updateSelectAll();
+  }
+
+  function updateSelectAll() {
+    var v = state.view;
+    $('selectAll').checked = v.length > 0 && v.every(function (q) { return state.selected[q.id]; });
+  }
+
+  function updateListEnd() {
+    var end = $('listEnd'), n = state.view.length, r = state.rendered;
+    if (r >= n) { end.classList.add('hidden'); return; }
+    end.classList.remove('hidden');
+    end.innerHTML = 'Mostrando ' + r + ' de ' + n + ' · <button type="button" class="link-btn" data-more-cards>Mostrar mais</button>';
+  }
+
+  function appendCards() {
+    var v = state.view, from = state.rendered, to = Math.min(v.length, from + PAGE);
+    if (from >= to) return;
+    var html = '';
+    for (var i = from; i < to; i++) html += cardHtml(v[i]);
+    $('queryList').insertAdjacentHTML('beforeend', html);
+    state.rendered = to;
+    updateListEnd();
+  }
+
   function renderList() {
-    var list = visibleQueries();
-    $('resultCount').textContent = list.length + (list.length === 1 ? ' consulta' : ' consultas');
-    $('queryList').innerHTML = list.map(cardHtml).join('');
+    state.sq = parseSearch(state.search);
+    state.view = visibleQueries();
+    $('queryList').innerHTML = '';
+    state.rendered = 0;
+    appendCards();
+    updateResultsHead();
 
-    var allSelected = list.length > 0 && list.every(function (q) { return state.selected[q.id]; });
-    $('selectAll').checked = allSelected;
-    $('btnZipList').classList.toggle('hidden', !list.length);
-
-    var empty = $('emptyState');
-    empty.classList.toggle('hidden', list.length > 0);
-    if (!list.length) {
+    var empty = $('emptyState'), none = !state.view.length;
+    empty.classList.toggle('hidden', !none);
+    if (none) {
       var hasData = state.queries.length > 0;
-      $('emptyTitle').textContent = hasData ? 'Nenhuma consulta encontrada' : 'Nenhuma consulta cadastrada';
+      $('emptyTitle').textContent = hasData ? 'Nenhuma consulta encontrada' : (state.loadError ? 'Não foi possível carregar' : 'Nenhuma consulta cadastrada');
       $('emptyText').textContent = hasData
-        ? 'Tente outro termo de busca ou remova o filtro.'
-        : (ADMIN ? 'Clique em "Cadastrar consultas" para enviar um JSON, vários arquivos ou um ZIP.' : 'A biblioteca ainda não tem consultas publicadas.');
+        ? 'Tente outro termo, ou use "Limpar filtros". Dica: busque por coluna:nome_da_coluna ou pelo ID.'
+        : (state.loadError || (ADMIN ? 'Clique em "Cadastrar" para enviar um JSON, vários arquivos ou um ZIP.' : 'A biblioteca ainda não tem consultas publicadas.'));
     }
   }
 
@@ -772,37 +495,51 @@
     $('bulkCount').textContent = n + (n === 1 ? ' selecionada' : ' selecionadas');
   }
 
-  function renderPublish() {
-    if (!ADMIN) return;
-    $('btnPublish').textContent = state.publishing ? 'Publicando...' : (state.dirty ? 'Publicar alterações ●' : 'Publicar');
-    $('btnPublish').disabled = state.publishing;
-    $('publishHint').textContent = state.dirty
-      ? 'Há alterações não publicadas. O time só vê o que for publicado.'
-      : 'Tudo publicado. Esta é a mesma biblioteca que o time está vendo.';
-  }
-
   function renderAll() {
     renderChips();
     renderList();
     renderBulk();
-    renderPublish();
+    if (state.loaded) $('skeleton').classList.add('hidden');
+    if (QH.afterRender) QH.afterRender();
   }
 
-  /* ---------- Drawer de detalhes ---------- */
-  function updateFavButton(q) {
-    $('drawerFav').textContent = state.favs[q.id] ? '★ Favorita' : '☆ Favoritar';
+  // Chamado quando os dados mudam (importação, edição, exclusão)
+  function dataChanged() {
+    recount();
+    renderAll();
+  }
+
+  /* ---------- Painel de detalhes ---------- */
+  var lastFocus = null;
+
+  function updateFavButton() {
+    var q = findQuery(state.openId);
+    if (q) $('drawerFav').textContent = state.favs[q.id] ? '★ Favorita' : '☆ Favoritar';
+  }
+
+  function linkFor(q) {
+    return window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + (q.num ? '#c=' + q.num : '');
   }
 
   function openDrawer(id) {
     var q = findQuery(id);
     if (!q) return;
+    var wasOpen = state.openId !== null;
+    if (!wasOpen) lastFocus = document.activeElement;
     state.openId = id;
 
-    $('drawerBadges').innerHTML = badgesHtml(q.categories || ['Outros']);
+    var cats = q.categories && q.categories.length ? q.categories : ['Outros'];
+    $('drawerBadges').innerHTML = badgesHtml(cats);
+    var idEl = $('drawerId');
+    idEl.classList.toggle('hidden', !q.num);
+    idEl.textContent = q.num ? formatId(q.num) : '';
+    var pill = $('drawerPill'), pt = isNewQuery(q) ? 'Nova' : (isUpdatedQuery(q) ? 'Atualizada' : '');
+    pill.classList.toggle('hidden', !pt);
+    pill.textContent = pt;
     $('drawerTitle').textContent = q.name;
     $('drawerDesc').textContent = q.description || '';
     $('colSearch').value = '';
-    updateFavButton(q);
+    updateFavButton();
 
     var filters = q.required_filters || [];
     $('drawerFilters').innerHTML = filters.length
@@ -813,9 +550,19 @@
 
     renderDrawerColumns();
 
-    $('drawerOverlay').classList.remove('hidden');
+    var idx = state.view.indexOf(q);
+    $('drawerPrev').disabled = idx <= 0;
+    $('drawerNext').disabled = idx === -1 || idx >= state.view.length - 1;
+    $('drawerPos').textContent = idx === -1 ? '' : (idx + 1) + ' de ' + state.view.length;
+    $('drawer').scrollTop = 0;
+
+    $('drawerOverlay').classList.add('is-open');
     $('drawer').classList.add('is-open');
     $('drawer').setAttribute('aria-hidden', 'false');
+    if (!wasOpen) setTimeout(function () { $('drawerClose').focus({ preventScroll: true }); }, 60);
+
+    if (q.num) { try { history.replaceState(null, '', '#c=' + q.num); } catch (err) { /* ignora */ } }
+    if (QH.hooks.drawerOpened) QH.hooks.drawerOpened(q);
   }
 
   function renderDrawerColumns() {
@@ -825,7 +572,6 @@
     var cols = (q.columns || []).filter(function (c) {
       return !term || normalize(c.name + ' ' + c.label).indexOf(term) !== -1;
     });
-
     $('drawerColsTitle').textContent = 'Colunas retornadas (' + (q.columns || []).length + ')';
     $('drawerCols').innerHTML = cols.length
       ? cols.map(function (c) {
@@ -835,21 +581,47 @@
   }
 
   function closeDrawer() {
+    if (state.openId === null) return;
     state.openId = null;
-    $('drawerOverlay').classList.add('hidden');
+    $('drawerOverlay').classList.remove('is-open');
     $('drawer').classList.remove('is-open');
     $('drawer').setAttribute('aria-hidden', 'true');
+    try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (err) { /* ignora */ }
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus({ preventScroll: true }); } catch (err) { /* ignora */ } }
   }
 
-  function copyColumns() {
+  function stepDrawer(delta) {
     var q = findQuery(state.openId);
     if (!q) return;
-    var text = (q.columns || []).map(function (c) { return c.name; }).join('\n');
-    if (!navigator.clipboard) { toast('Seu navegador não permite copiar automaticamente.'); return; }
-    navigator.clipboard.writeText(text).then(function () { toast('Nomes das colunas copiados.'); });
+    var next = state.view[state.view.indexOf(q) + delta];
+    if (next) openDrawer(next.id);
+  }
+
+  function openFromHash() {
+    var m = String(window.location.hash || '').match(/^#c=(\d+)$/);
+    if (!m) return;
+    var num = Number(m[1]);
+    var q = state.queries.filter(function (x) { return Number(x.num) === num; })[0];
+    if (q) openDrawer(q.id);
+    else if (state.loaded) toast('Não encontrei a consulta ' + formatId(num) + '. Ela pode ter sido removida.');
   }
 
   /* ---------- Downloads ---------- */
+  var jszipPromise = null;
+  function ensureJSZip() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    if (!jszipPromise) {
+      jszipPromise = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'js/vendor/jszip.min.js';
+        s.onload = function () { resolve(window.JSZip); };
+        s.onerror = function () { jszipPromise = null; reject(new Error('Não foi possível carregar o módulo de ZIP.')); };
+        document.head.appendChild(s);
+      });
+    }
+    return jszipPromise;
+  }
+
   function downloadQuery(id) {
     var q = findQuery(id);
     if (!q) return;
@@ -858,878 +630,319 @@
 
   function downloadZip(list, zipName) {
     if (!list.length) { toast('Nenhuma consulta para baixar.'); return; }
-    var zip = new JSZip(), used = {};
-    list.forEach(function (q) {
-      var base = (q.source_filename || (slug(q.name) + '.json')).replace(/\.json$/i, '');
-      used[base] = (used[base] || 0) + 1;
-      var name = used[base] > 1 ? base + '_' + used[base] + '.json' : base + '.json';
-      zip.file(name, JSON.stringify(q.raw_json, null, 2));
-    });
-    zip.generateAsync({ type: 'blob' }).then(function (blob) {
+    toast('Preparando o ZIP...');
+    ensureJSZip().then(function (JSZip) {
+      var zip = new JSZip(), used = {};
+      list.forEach(function (q) {
+        var base = (q.source_filename || (slug(q.name) + '.json')).replace(/\.json$/i, '');
+        used[base] = (used[base] || 0) + 1;
+        var name = used[base] > 1 ? base + '_' + used[base] + '.json' : base + '.json';
+        zip.file(name, JSON.stringify(q.raw_json, null, 2));
+      });
+      return zip.generateAsync({ type: 'blob' });
+    }).then(function (blob) {
       download(zipName, blob);
       toast(list.length + ' consulta(s) no ZIP.');
-    });
+    }).catch(function (err) { toast(err.message); });
   }
 
-  /* ==========================================================================
-     Somente admin
-     ========================================================================== */
-
-  /* ---------- Publicar para o GitHub ---------- */
-  var PUBLISH_ERRORS = {
-    github_not_configured: 'O GitHub ainda não foi configurado na Vercel (GITHUB_TOKEN e GITHUB_REPO).',
-    github_auth: 'O token do GitHub foi recusado. Verifique se ele não expirou e se tem permissão de escrita em "Contents".',
-    github_repo: 'Repositório não encontrado. Confira a variável GITHUB_REPO.',
-    github_write: 'O GitHub recusou a gravação do arquivo.',
-    github_read: 'Não foi possível ler o repositório no GitHub.',
-    github_conflict: 'O arquivo mudou durante a publicação. Tente novamente.',
-    invalid_library: 'A biblioteca enviada é inválida.',
-    empty_not_confirmed: 'A publicação de uma biblioteca vazia precisa de confirmação.',
-    bad_origin: 'Requisição recusada por segurança. Recarregue a página e tente de novo.',
-    forbidden: 'Seu usuário não é administrador.'
-  };
-
-  function gzip(text) {
-    var stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
-    return new Response(stream).blob();
+  /* ---------- Pedido de ajuste (abre o e-mail já preenchido) ---------- */
+  function mailLines(q, f, opts) {
+    var cats = (q.categories || []).join(', ') || 'Outros';
+    var L = [];
+    L.push('Olá,', '', 'Gostaria de pedir um ajuste na consulta dinâmica abaixo.', '');
+    L.push('CONSULTA');
+    L.push('ID: ' + (q.num ? formatId(q.num) : '(sem ID)'));
+    L.push('Nome: ' + q.name);
+    L.push('Categorias: ' + cats);
+    if (q.source_filename) L.push('Arquivo: ' + q.source_filename);
+    if (q.num) L.push('Link: ' + linkFor(q));
+    L.push('');
+    L.push('PEDIDO');
+    L.push('Tipo de ajuste: ' + f.type);
+    L.push('Urgência: ' + f.urgency);
+    L.push('Descrição:', f.text.length > opts.maxText ? f.text.slice(0, opts.maxText) + '… (texto cortado)' : f.text);
+    if (opts.cols) {
+      var cols = (q.columns || []).map(function (c) { return c.name; });
+      L.push('', 'Colunas atuais (' + cols.length + '): ' + cols.slice(0, 12).join(', ') + (cols.length > 12 ? ' e mais ' + (cols.length - 12) : ''));
+      var fil = (q.required_filters || []).map(function (x) { return x.name; });
+      if (fil.length) L.push('Filtros: ' + fil.join(', '));
+    }
+    if (opts.json) L.push('', 'JSON DA CONSULTA', opts.json);
+    else if (f.download) L.push('', '(O arquivo JSON da consulta foi baixado e segue em anexo.)');
+    L.push('', 'Solicitante: ' + ((state.user && state.user.email) || '(não identificado)'));
+    return L.join('\r\n');
   }
 
-  function publish() {
-    if (state.publishing) return;
-    if (!state.dirty) { toast('Não há alterações para publicar.'); return; }
-    if (!window.CompressionStream) { toast('Seu navegador é antigo para publicar. Atualize o Chrome, Edge ou Safari.'); return; }
-
-    var empty = state.queries.length === 0;
-    var question = empty
-      ? 'ATENÇÃO: a biblioteca está VAZIA. Publicar vai apagar TODAS as consultas do site do time. Deseja continuar?'
-      : 'Publicar ' + state.queries.length + ' consulta(s) para o time? O site atualiza em cerca de 1 minuto.';
-    if (!window.confirm(question)) return;
-
-    state.publishing = true;
-    renderPublish();
-
-    var finish = function () { state.publishing = false; renderPublish(); };
-
-    gzip(JSON.stringify(state.queries)).then(function (blob) {
-      var headers = { 'Content-Type': 'application/octet-stream' };
-      if (empty) headers['X-Confirm-Empty'] = 'yes';
-      return fetch('/api/admin/publish', { method: 'POST', headers: headers, body: blob });
-    }).then(function (res) {
-      if (res.status === 401) { window.location.replace('/login.html'); return null; }
-      if (res.status === 404) throw new Error('A publicação só funciona no site publicado na Vercel.');
-      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
-    }).then(function (result) {
-      if (!result) return;
-      if (!result.ok) throw new Error(PUBLISH_ERRORS[result.data.error] || 'Não foi possível publicar (' + result.data.error + ').');
-      state.dirty = false;
-      saveDraft();
-      toast('Publicado! O time verá as mudanças em cerca de 1 minuto, quando o deploy terminar.');
-    }).catch(function (err) {
-      toast(err.message);
-    }).then(finish);
+  function buildEmail(q, f) {
+    var subject = 'Pedido de ajuste – Consulta ' + (q.num ? formatId(q.num) + ' – ' : '') + q.name.slice(0, 80);
+    var rawJson = f.inline ? JSON.stringify(q.raw_json) : '';
+    var attempts = [
+      { cols: true, json: rawJson, maxText: 1000 },
+      { cols: true, json: '', maxText: 1000 },
+      { cols: false, json: '', maxText: 1000 },
+      { cols: false, json: '', maxText: 600 },
+      { cols: false, json: '', maxText: 300 }
+    ];
+    var best = null;
+    for (var i = 0; i < attempts.length; i++) {
+      var body = mailLines(q, f, attempts[i]);
+      var url = 'mailto:' + REQUEST_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+      best = { subject: subject, body: body, url: url, trimmed: i > 0 && !(i === 1 && !rawJson), droppedJson: !!rawJson && !attempts[i].json };
+      if (url.length <= MAILTO_LIMIT) break;
+    }
+    return best;
   }
 
-  function discardDraft() {
-    if (!window.confirm('Descartar o rascunho e recarregar a biblioteca publicada? As alterações não publicadas serão perdidas.')) return;
-    try { localStorage.removeItem(DRAFT_KEY); } catch (err) { /* ignora */ }
-    state.dirty = false;
-    state.selected = {};
-    closeDrawer();
-    fetchLibrary()
-      .then(function (list) { state.queries = list; toast('Biblioteca recarregada.'); })
-      .catch(function (err) { toast(err.message); })
-      .then(renderAll);
-  }
-
-  /* ---------- Importação ---------- */
-  function findIndex(item) {
-    var idx = -1;
-    state.queries.forEach(function (q, i) {
-      if (q.id === item.id || (item.source_filename && q.source_filename === item.source_filename)) idx = i;
-    });
-    return idx;
-  }
-
-  // Une consultas à biblioteca: arquivos com o mesmo nome atualizam a consulta existente
-  function mergeLibrary(list, keepData) {
-    var added = 0, updated = 0;
-    list.forEach(function (item) {
-      var idx = findIndex(item);
-      if (idx >= 0) {
-        var old = state.queries[idx];
-        if (!keepData) {
-          // Reenvio do mesmo arquivo: atualiza o JSON, mantém o que já foi cadastrado
-          item.id = old.id;
-          item.categories = old.categories;
-          item.description = old.description;
-          item.created_at = old.created_at;
-          item.primary_columns = old.primary_columns;
-        }
-        state.queries[idx] = item;
-        updated++;
-      } else {
-        state.queries.unshift(item);
-        added++;
-      }
-    });
-    return { added: added, updated: updated };
-  }
-
-  function setStatus(text) { $('importStatus').textContent = text; }
-
-  function normalizeText(t) { return normalize(t).replace(/\s+/g, ' ').trim(); }
-
-  var IGNORE_FILES = ['.ds_store', 'thumbs.db', 'desktop.ini'];
-
-  function classifyName(path) {
-    var base = path.split('/').pop(), low = base.toLowerCase();
-    if (path.indexOf('__MACOSX/') !== -1 || low.indexOf('._') === 0 || IGNORE_FILES.indexOf(low) !== -1 || low.indexOf('~$') === 0) return 'sistema';
-    if (/\.json$/i.test(base)) return 'json';
-    if (/\.zip$/i.test(base)) return 'zip';
-    return 'outro';
-  }
-
-  function stamp(it, path) { it.path = path; it.file = String(path).split('/').pop(); return it; }
-  function fileItem(path, code, detail, extra) { return stamp(mk(code, detail, extra), path); }
-
-  function extOf(name) { return name.indexOf('.') > 0 ? '.' + name.split('.').pop() : 'sem extensão'; }
-
-  // Lê os arquivos enviados e monta a lista de entradas .json a analisar (abre os ZIPs)
-  function collectEntries(inputs, items) {
-    var entries = [], chain = Promise.resolve();
-    inputs.forEach(function (file) {
-      chain = chain.then(function () {
-        var kind = classifyName(file.name);
-        if (kind === 'sistema') { items.push(fileItem(file.name, 'ARQ_SISTEMA', 'Arquivo criado pelo sistema operacional.')); return; }
-        if (kind === 'outro') { items.push(fileItem(file.name, 'ARQ_IGNORADO', 'O formato "' + extOf(file.name) + '" não é lido.')); return; }
-        if (kind === 'json') { entries.push({ path: file.name, size: file.size, read: function () { return file.text(); } }); return; }
-
-        return JSZip.loadAsync(file).then(function (zip) {
-          var count = 0;
-          Object.keys(zip.files).forEach(function (p) {
-            if (zip.files[p].dir) return;
-            var k = classifyName(p);
-            if (k === 'sistema') items.push(fileItem(p, 'ARQ_SISTEMA', 'Arquivo criado pelo sistema operacional (dentro de ' + file.name + ').'));
-            else if (k === 'outro') items.push(fileItem(p, 'ARQ_IGNORADO', 'O formato "' + extOf(p) + '" não é lido (dentro de ' + file.name + ').'));
-            else if (k === 'zip') items.push(fileItem(p, 'ZIP_ANINHADO', 'ZIP dentro de ' + file.name + '.'));
-            else { count++; entries.push({ path: p, size: null, read: function () { return zip.files[p].async('string'); } }); }
-          });
-          if (!count) items.push(fileItem(file.name, 'ZIP_SEM_JSON', 'O ZIP foi aberto, mas não tem nenhum arquivo .json.'));
-        }).catch(function (err) {
-          var msg = String((err && err.message) || err);
-          var code = /encrypted/i.test(msg) ? 'ZIP_PROTEGIDO' : 'ZIP_INVALIDO';
-          items.push(fileItem(file.name, code, code === 'ZIP_PROTEGIDO' ? 'O ZIP exige senha.' : 'O arquivo não pôde ser aberto como ZIP.', { tech: msg }));
-        });
-      });
-    });
-    return chain.then(function () { return entries; });
-  }
-
-  // Analisa cada entrada .json (uma por vez, cedendo a tela de vez em quando)
-  function analyzeEntries(entries, items, onProgress) {
-    var results = [], chain = Promise.resolve();
-    entries.forEach(function (en, idx) {
-      chain = chain.then(function () {
-        if (onProgress && idx % 25 === 0) {
-          onProgress(idx, entries.length);
-          return new Promise(function (resolve) { setTimeout(resolve, 0); });
-        }
-      }).then(function () {
-        if (en.size != null && en.size > MAX_FILE_CHARS * 1.5) {
-          items.push(fileItem(en.path, 'ARQ_GRANDE', 'O arquivo tem ' + (en.size / 1048576).toFixed(1) + ' MB e o limite é 8 MB.'));
-          return;
-        }
-        return en.read().then(function (text) {
-          var res = inspectText(text, en.path.split('/').pop());
-          res.issues.forEach(function (it) { items.push(stamp(it, en.path)); });
-          res.results.forEach(function (r) { r.path = en.path; results.push(r); });
-        }, function (err) {
-          items.push(fileItem(en.path, 'ARQ_LEITURA', 'Falha ao ler: ' + String((err && err.message) || err)));
-        });
-      });
-    });
-    return chain.then(function () { return results; });
-  }
-
-  // Duplicidades: mesmo nome de arquivo, mesmo SQL e mesmo nome (no envio e na biblioteca atual)
-  function crossCheck(results) {
-    var fileOwner = {}, dupCount = {}, sqlOwner = {}, nameOwner = {}, libSql = {}, libName = {};
-    state.queries.forEach(function (q) {
-      var s = normalizeSql(q.raw_json && q.raw_json.query), n = normalizeText(q.name);
-      if (s && !libSql[s]) libSql[s] = q.source_filename;
-      if (n && !libName[n]) libName[n] = q.source_filename;
-    });
-
-    results.forEach(function (r) {
-      var q = r.q, base = q.source_filename;
-
-      if (fileOwner[base] !== undefined) {
-        var stem = base.replace(/\.json$/i, ''), n = (dupCount[base] || 1) + 1, nn;
-        do { nn = stem + '_' + n + '.json'; n++; } while (fileOwner[nn] !== undefined);
-        dupCount[base] = n - 1;
-        r.issues.push(mk('DUP_LOTE', 'Já havia um arquivo chamado "' + base + '" neste envio (' + fileOwner[base] + '). Esta cópia foi importada como "' + nn + '".'));
-        q.source_filename = nn;
-        base = nn;
-      }
-      fileOwner[base] = r.path;
-
-      var sql = normalizeSql(q.raw_json.query), sameSql = null;
-      if (sql) {
-        if (sqlOwner[sql]) sameSql = sqlOwner[sql];
-        else if (libSql[sql] && libSql[sql] !== base) sameSql = libSql[sql];
-        if (!sqlOwner[sql]) sqlOwner[sql] = base;
-      }
-      if (sameSql) r.issues.push(mk('MESMO_SQL', 'O SQL é idêntico ao da consulta do arquivo "' + sameSql + '".'));
-
-      var nm = normalizeText(q.name);
-      if (nm && !sameSql) {
-        var other = nameOwner[nm] || (libName[nm] && libName[nm] !== base ? libName[nm] : null);
-        if (other) r.issues.push(mk('NOME_REPETIDO', 'Já existe uma consulta chamada "' + q.name + '" (arquivo "' + other + '") com SQL diferente.'));
-        if (!nameOwner[nm]) nameOwner[nm] = base;
-      }
-    });
-  }
-
-  function runImport(inputs, onProgress) {
-    var items = [];
-    return collectEntries(inputs, items).then(function (entries) {
-      return analyzeEntries(entries, items, onProgress).then(function (results) {
-        crossCheck(results);
-        return { results: results, items: items, entriesCount: entries.length };
-      });
-    });
-  }
-
-  // Grava as consultas válidas na biblioteca
-  function applyImport(an) {
-    var existing = {};
-    state.queries.forEach(function (q) { existing[q.source_filename] = true; });
-    var normal = an.results.filter(function (r) { return !r.keep; });
-    var kept = an.results.filter(function (r) { return r.keep; });
-    var updatedResults = an.results.filter(function (r) { return existing[r.q.source_filename]; });
-
-    var a = mergeLibrary(normal.map(function (r) { return r.q; }), false);
-    var b = mergeLibrary(kept.map(function (r) { return r.q; }), true);
-
-    var idByFile = {};
-    state.queries.forEach(function (q) { idByFile[q.source_filename] = q.id; });
-    an.results.forEach(function (r) { r.finalId = idByFile[r.q.source_filename] || r.q.id; });
-    updatedResults.forEach(function (r) {
-      r.issues.push(mk('ATUALIZADA', 'Já existia uma consulta do arquivo "' + r.q.source_filename + '".'));
-    });
-    return { added: a.added + b.added, updated: a.updated + b.updated };
-  }
-
-  /* ---------- Relatório de importação ---------- */
-  var REPORT_KEY = 'queryhub:last-report:v1';
-  var SEV_LABEL = { erro: 'Erro', aviso: 'Aviso', info: 'Info', ignorado: 'Ignorado' };
-
-  function buildReport(an, source, counts) {
-    var items = an.items.slice(), withWarn = 0;
-    an.results.forEach(function (r) {
-      var warns = r.issues.filter(function (i) { return i.sev !== 'erro'; });
-      if (warns.some(function (i) { return i.sev === 'aviso'; })) withWarn++;
-      var id = r.finalId || r.q.id;
-      state.warnById[id] = warns;
-      warns.forEach(function (w) {
-        var it = stamp(Object.assign({}, w), r.path);
-        it.queryId = id;
-        it.queryName = r.q.name;
-        items.push(it);
-      });
-    });
-    var errorFiles = {};
-    items.forEach(function (i) { if (i.sev === 'erro') errorFiles[i.path] = true; });
+  function reqFields() {
     return {
-      id: 'r_' + Date.now().toString(36),
-      createdAt: Date.now(),
-      source: source,
-      items: items,
-      totals: {
-        lidos: an.entriesCount,
-        importadas: an.results.length,
-        atualizadas: counts.updated,
-        comAviso: withWarn,
-        comErro: Object.keys(errorFiles).length,
-        ignorados: items.filter(function (i) { return i.sev === 'ignorado'; }).length
-      }
+      type: $('reqType').value, urgency: $('reqUrgency').value, text: $('reqText').value.trim(),
+      download: $('reqDownload').checked, inline: $('reqInline').checked && !$('reqInline').disabled
     };
   }
 
-  function saveReport() {
-    var r = state.report;
-    if (!r) return;
-    try {
-      var slim = {
-        id: r.id, createdAt: r.createdAt, source: r.source, totals: r.totals,
-        items: r.items.slice(0, 3000).map(function (i) {
-          return { code: i.code, sev: i.sev, title: i.title, hint: i.hint, detail: String(i.detail || '').slice(0, 400), tech: String(i.tech || '').slice(0, 200), snippet: String(i.snippet || '').slice(0, 200), line: i.line, col: i.col, path: i.path, file: i.file, queryId: i.queryId, queryName: i.queryName };
-        })
-      };
-      localStorage.setItem(REPORT_KEY, JSON.stringify(slim));
-    } catch (err) { /* sem espaço: o relatório fica só na memória */ }
+  function openRequest(q) {
+    if (!q) return;
+    state.request = q;
+    var cats = (q.categories || []).join(' · ') || 'Outros';
+    $('reqCard').innerHTML = (q.num ? '<span class="qid">' + formatId(q.num) + '</span> ' : '') + '<b>' + esc(q.name) + '</b><br>' + esc(cats) + ' · ' + (q.columns || []).length + ' colunas';
+    $('reqTo').textContent = REQUEST_EMAIL;
+    $('reqText').value = '';
+    $('reqCount').textContent = '0 / 1000';
+    $('reqError').textContent = '';
+    $('reqNote').textContent = '';
+    $('reqDownload').checked = true;
+    var small = JSON.stringify(q.raw_json).length <= 600;
+    $('reqInline').checked = false;
+    $('reqInline').disabled = !small;
+    $('reqInlineLabel').innerHTML = 'Colar o JSON no corpo do e-mail<small>' + (small ? 'Esta consulta é pequena o bastante.' : 'Esta consulta é grande demais para o corpo do e-mail. Use o arquivo baixado como anexo.') + '</small>';
+    openModal($('requestModal'));
+    setTimeout(function () { $('reqText').focus(); }, 80);
   }
 
-  function loadReport() {
-    try { state.report = JSON.parse(localStorage.getItem(REPORT_KEY) || 'null'); } catch (err) { state.report = null; }
-    updateReportButton();
-  }
+  function sendRequest(copyOnly) {
+    var q = state.request;
+    if (!q) return;
+    var f = reqFields();
+    if (f.text.length < 10) { $('reqError').textContent = 'Descreva o ajuste com pelo menos 10 caracteres.'; $('reqText').focus(); return; }
+    $('reqError').textContent = '';
+    var mail = buildEmail(q, f);
+    var notes = [];
+    if (mail.trimmed) notes.push('O e-mail foi encurtado para caber no link.');
+    if (mail.droppedJson) notes.push('O JSON não coube no corpo; use o anexo.');
+    $('reqNote').textContent = notes.join(' ');
 
-  function updateReportButton() {
-    var btn = $('btnReport');
-    if (!btn) return;
-    var r = state.report;
-    btn.classList.toggle('hidden', !r);
-    if (r) $('reportBadge').textContent = r.totals.comErro ? String(r.totals.comErro) : '';
-    if (r) $('reportBadge').classList.toggle('hidden', !r.totals.comErro);
-  }
-
-  function warningsFor(q) {
-    if (state.warnById[q.id]) return state.warnById[q.id];
-    var r = state.report;
-    if (!r) return [];
-    return r.items.filter(function (i) { return i.queryId === q.id && (i.sev === 'aviso' || i.sev === 'info'); });
-  }
-
-  function reportTabOf(it) { return it.sev === 'info' || it.sev === 'aviso' ? 'aviso' : it.sev; }
-
-  function describeSource(files) { return files.length === 1 ? files[0].name : files.length + ' arquivos'; }
-
-  function formatDate(ts) {
-    var d = new Date(ts), p = function (n) { return (n < 10 ? '0' : '') + n; };
-    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
-  }
-
-  var reportGroups = {};
-
-  function openReport(tab) {
-    if (!state.report) return;
-    if (tab) state.reportTab = tab;
-    $('reportSearch').value = '';
-    renderReport();
-    if (!$('reportModal').open) $('reportModal').showModal();
-  }
-
-  function rowHtml(it) {
-    var cat = ISSUES[it.code] || {};
-    var h = '<div class="irow"><div class="irow__top"><code>' + esc(it.path || it.file || '') + '</code>';
-    if (it.queryId && findQuery(it.queryId)) h += '<button type="button" class="link-btn" data-open-query="' + esc(it.queryId) + '">Abrir consulta</button>';
-    h += '</div><div class="irow__detail">' + esc(it.detail) + '</div>';
-    if (it.line) h += '<div class="irow__where">Linha ' + it.line + ', coluna ' + it.col + '</div>';
-    if (it.snippet) h += '<pre class="snippet">' + esc(it.snippet) + '</pre>';
-    if (it.hint && it.hint !== cat.hint) h += '<div class="irow__hint">' + esc(it.hint) + '</div>';
-    if (it.tech) h += '<div class="irow__tech">Mensagem técnica: ' + esc(it.tech) + '</div>';
-    return h + '</div>';
-  }
-
-  function fillGroup(det) {
-    var code = det.getAttribute('data-code'), list = reportGroups[code] || [];
-    var body = det.querySelector('.igroup__body'), shown = Number(det.getAttribute('data-shown') || 0), step = 100;
-    var more = body.querySelector('[data-more]');
-    if (more) more.remove();
-    var html = list.slice(shown, shown + step).map(rowHtml).join('');
-    body.insertAdjacentHTML('beforeend', html);
-    shown = Math.min(list.length, shown + step);
-    det.setAttribute('data-shown', String(shown));
-    if (shown < list.length) {
-      body.insertAdjacentHTML('beforeend', '<button type="button" class="btn btn--sm" data-more="' + esc(code) + '">Mostrar mais (' + (list.length - shown) + ' restantes)</button>');
-    }
-  }
-
-  function renderReport() {
-    var r = state.report;
-    if (!r) return;
-    var tab = state.reportTab || 'erro', t = r.totals;
-    $('reportSub').textContent = r.source + ' · ' + formatDate(r.createdAt);
-
-    $('reportSummary').innerHTML = [
-      ['Arquivos lidos', t.lidos, ''], ['Importadas', t.importadas, 'ok'], ['Com aviso', t.comAviso, 'warn'],
-      ['Com erro', t.comErro, 'err'], ['Ignorados', t.ignorados, ''], ['Atualizadas', t.atualizadas, '']
-    ].map(function (c) { return '<div class="rsum rsum--' + c[2] + '"><b>' + c[1] + '</b><span>' + c[0] + '</span></div>'; }).join('');
-
-    var counts = { erro: 0, aviso: 0, ignorado: 0 };
-    r.items.forEach(function (i) { counts[reportTabOf(i)]++; });
-    document.querySelectorAll('.rtab').forEach(function (b) {
-      b.classList.toggle('is-active', b.getAttribute('data-rtab') === tab);
-      b.querySelector('em').textContent = counts[b.getAttribute('data-rtab')];
-    });
-
-    var term = normalize($('reportSearch').value), groups = {}, order = [];
-    r.items.filter(function (i) {
-      if (reportTabOf(i) !== tab) return false;
-      return !term || normalize([i.path, i.detail, i.title, i.code].join(' ')).indexOf(term) !== -1;
-    }).forEach(function (i) {
-      if (!groups[i.code]) { groups[i.code] = []; order.push(i.code); }
-      groups[i.code].push(i);
-    });
-    order.sort(function (a, b) { return groups[b].length - groups[a].length; });
-    reportGroups = groups;
-
-    var box = $('reportList');
-    if (!order.length) {
-      box.innerHTML = '<p class="muted-text rempty">' + (term ? 'Nada encontrado para essa busca.' : tab === 'erro' ? 'Nenhum erro neste envio.' : tab === 'aviso' ? 'Nenhum aviso neste envio.' : 'Nenhum arquivo ignorado neste envio.') + '</p>';
+    if (copyOnly) {
+      copyText('Para: ' + REQUEST_EMAIL + '\r\nAssunto: ' + mail.subject + '\r\n\r\n' + mail.body)
+        .then(function () { toast('Texto do e-mail copiado.'); })
+        .catch(function () { toast('Não consegui copiar automaticamente.'); });
       return;
     }
-    box.innerHTML = order.map(function (code) {
-      var d = ISSUES[code] || { title: code, meaning: '', hint: '', sev: 'erro' };
-      return '<details class="igroup" data-code="' + esc(code) + '" data-shown="0"><summary>' +
-        '<span class="sev sev--' + d.sev + '">' + SEV_LABEL[d.sev] + '</span><strong>' + esc(d.title) + '</strong><em>' + groups[code].length + '</em></summary>' +
-        '<div class="igroup__body"><p class="igroup__meaning">' + esc(d.meaning) + '</p><p class="igroup__hint"><b>Como resolver:</b> ' + esc(d.hint) + '</p></div></details>';
-    }).join('');
-
-    box.querySelectorAll('details.igroup').forEach(function (det) {
-      det.addEventListener('toggle', function () { if (det.open && !Number(det.getAttribute('data-shown'))) fillGroup(det); });
-    });
-    var firstGroup = box.querySelector('details.igroup');
-    if (firstGroup && (order.length <= 3 || term)) firstGroup.open = true;
-  }
-
-  function csvEscape(v) {
-    v = String(v == null ? '' : v);
-    return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-  }
-
-  function reportCsv() {
-    var r = state.report;
-    if (!r) return;
-    var lines = [['arquivo', 'caminho', 'gravidade', 'codigo', 'mensagem', 'detalhe', 'como_resolver', 'linha', 'coluna', 'trecho'].join(';')];
-    r.items.forEach(function (i) {
-      lines.push([i.file, i.path, i.sev, i.code, i.title, i.detail, i.hint, i.line || '', i.col || '', i.snippet || ''].map(csvEscape).join(';'));
-    });
-    download('relatorio_importacao.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8');
-  }
-
-  function reportCopy() {
-    var r = state.report;
-    if (!r) return;
-    var t = r.totals, lines = ['Relatório de importação – ' + r.source + ' (' + formatDate(r.createdAt) + ')',
-      t.lidos + ' arquivos lidos · ' + t.importadas + ' importadas · ' + t.comAviso + ' com aviso · ' + t.comErro + ' com erro · ' + t.ignorados + ' ignorados', ''];
-    r.items.filter(function (i) { return i.sev === 'erro'; }).forEach(function (i) {
-      lines.push('• ' + i.path + ' – ' + i.title + ': ' + i.detail);
-    });
-    if (!navigator.clipboard) { toast('Seu navegador não permite copiar automaticamente.'); return; }
-    navigator.clipboard.writeText(lines.join('\n')).then(function () { toast('Resumo dos erros copiado.'); });
-  }
-
-  function renderGuide() {
-    var groups = {}, order = [];
-    Object.keys(ISSUES).forEach(function (code) {
-      var d = ISSUES[code];
-      if (!groups[d.g]) { groups[d.g] = []; order.push(d.g); }
-      groups[d.g].push(code);
-    });
-    $('guideBody').innerHTML = order.map(function (g) {
-      return '<h3 class="guide__group">' + esc(g) + '</h3><div class="guide__wrap"><table class="guide"><thead><tr><th>Tipo</th><th>Mensagem</th><th>O que significa</th><th>Como resolver</th></tr></thead><tbody>' +
-        groups[g].map(function (code) {
-          var d = ISSUES[code];
-          return '<tr><td><span class="sev sev--' + d.sev + '">' + SEV_LABEL[d.sev] + '</span></td><td><b>' + esc(d.title) + '</b><br><code>' + esc(code) + '</code></td><td>' + esc(d.meaning) + '</td><td>' + esc(d.hint) + '</td></tr>';
-        }).join('') + '</tbody></table></div>';
-    }).join('');
-  }
-
-  function openGuide() {
-    if (!$('guideBody').innerHTML) renderGuide();
-    $('guideModal').showModal();
-  }
-
-  /* ---------- Fluxos de envio ---------- */
-  function summaryText(t) {
-    var parts = [t.importadas + ' importada(s)'];
-    if (t.atualizadas) parts.push(t.atualizadas + ' atualizada(s)');
-    if (t.comAviso) parts.push(t.comAviso + ' com aviso');
-    parts.push(t.comErro + ' com erro');
-    if (t.ignorados) parts.push(t.ignorados + ' ignorado(s)');
-    return parts.join(' · ');
-  }
-
-  function registerReport(an, source, counts) {
-    state.report = buildReport(an, source, counts);
-    saveReport();
-    updateReportButton();
-    return state.report;
-  }
-
-  function finishBatch(an, source) {
-    if (!an.results.length && !an.items.length) { setStatus('Nenhum arquivo para importar.'); return; }
-    var counts = { added: 0, updated: 0 };
-    if (an.results.length) { counts = applyImport(an); changed(); }
-    var t = registerReport(an, source, counts).totals;
-    var text = summaryText(t);
-    setStatus(text + '.');
-    toast(text + '.');
-    if (t.comErro || t.comAviso) {
-      $('importModal').close();
-      openReport(t.comErro ? 'erro' : 'aviso');
-    }
-  }
-
-  function afterSingle(an, files) {
-    var errs = an.items.filter(isError);
-    if (!an.results.length) {
-      var lines = errs.slice(0, 3).map(function (e) {
-        return e.title + '\n' + e.detail + (e.snippet ? '\ntrecho: ' + e.snippet : '') + '\n\u2192 ' + e.hint;
-      });
-      if (!lines.length) lines = an.items.slice(0, 3).map(function (e) { return e.title + ': ' + e.detail; });
-      setStatus(lines.join('\n\n') + (lines.length ? '\n\n(O relatório completo está no botão "Relatório" no topo.)' : ''));
-      registerReport(an, describeSource(files), { added: 0, updated: 0 });
-      return;
-    }
-    if (an.results.length === 1 && !an.results[0].keep && !errs.length) {
-      var r = an.results[0];
-      state.warnById[r.q.id] = r.issues.filter(function (i) { return i.sev !== 'erro'; });
-      setStatus('');
-      $('importModal').close();
-      openEditor(r.q, true);
-      return;
-    }
-    finishBatch(an, describeSource(files));
-  }
-
-  function progress(done, total) { setStatus('Analisando ' + done + ' de ' + total + ' arquivos...'); }
-
-  function failImport(err) { setStatus('Erro inesperado ao analisar os arquivos: ' + String((err && err.message) || err)); }
-
-  function handleBatch(fileList) {
-    var files = Array.prototype.slice.call(fileList || []);
-    if (!files.length) return;
-    setStatus('Lendo arquivos...');
-    runImport(files, progress).then(function (an) {
-      $('batchFile').value = '';
-      if (files.length === 1 && classifyName(files[0].name) === 'json') afterSingle(an, files);
-      else finishBatch(an, describeSource(files));
-    }).catch(failImport);
-  }
-
-  function handleSingleFile(file) {
-    if (!file) return;
-    setStatus('Lendo arquivo...');
-    runImport([file], progress).then(function (an) {
-      $('singleFile').value = '';
-      afterSingle(an, [file]);
-    }).catch(failImport);
-  }
-
-  function handlePaste() {
-    var text = $('pasteJson').value;
-    if (!text.trim()) { setStatus('Cole o conteúdo do JSON da consulta.'); return; }
-    var name = 'consulta_colada.json';
-    try { var d = JSON.parse(text); if (d && typeof d.name === 'string' && d.name.trim()) name = slug(d.name) + '.json'; } catch (err) { /* o diagnóstico vem da análise */ }
-    var file = new File([text], name, { type: 'application/json' });
-    setStatus('Analisando...');
-    runImport([file], progress).then(function (an) {
-      if (an.results.length) $('pasteJson').value = '';
-      afterSingle(an, [file]);
-    }).catch(failImport);
-  }
-
-  function switchTab(name) {
-    document.querySelectorAll('.tabs__btn').forEach(function (b) {
-      b.classList.toggle('is-active', b.dataset.tab === name);
-    });
-    document.querySelectorAll('.tabs__panel').forEach(function (p) {
-      p.classList.toggle('hidden', p.dataset.panel !== name);
-    });
-    setStatus('');
-  }
-
-  /* ---------- Edição / cadastro individual ---------- */
-  function categoryPickerHtml(selected) {
-    return CATEGORIES.map(function (cat) {
-      var checked = selected.indexOf(cat.name) !== -1;
-      return '<label class="check"><input type="checkbox" value="' + esc(cat.name) + '"' + (checked ? ' checked' : '') + '>' +
-        '<span class="chip__dot" style="background:' + cat.color + '"></span>' + esc(cat.name) + '</label>';
-    }).join('');
-  }
-
-  // Limita a quantidade de checkboxes marcados e atualiza o contador
-  function limitChecks(containerId, max, counterId, suffix) {
-    var boxes = Array.prototype.slice.call($(containerId).querySelectorAll('input[type="checkbox"]'));
-    var checked = boxes.filter(function (b) { return b.checked; }).length;
-    boxes.forEach(function (b) {
-      var block = !b.checked && checked >= max;
-      b.disabled = block;
-      if (b.parentNode.classList.contains('check')) b.parentNode.classList.toggle('is-disabled', block);
-    });
-    $(counterId).textContent = checked + ' de ' + max + (suffix || '');
-  }
-
-  function checkedValues(containerId) {
-    return Array.prototype.slice.call($(containerId).querySelectorAll('input[type="checkbox"]:checked')).map(function (i) { return i.value; });
-  }
-
-  function openEditor(q, isNew) {
-    state.editing = { query: q, isNew: !!isNew };
-
-    $('editTitle').textContent = isNew ? 'Nova consulta' : 'Editar consulta';
-    $('editSummary').textContent = (q.source_filename || '') + ' · ' +
-      (q.columns || []).length + ' colunas · ' + (q.required_filters || []).length + ' filtros detectados';
-    $('editName').value = q.name;
-    $('editDesc').value = q.description || '';
-    $('editDelete').classList.toggle('hidden', !!isNew);
-
-    var warns = warningsFor(q), wbox = $('editWarnings');
-    if (wbox) {
-      wbox.classList.toggle('hidden', !warns.length);
-      wbox.innerHTML = warns.length
-        ? '<strong>Pontos de atenção desta consulta (' + warns.length + ')</strong><ul>' + warns.map(function (w) {
-            return '<li><b>' + esc(w.title) + '.</b> ' + esc(w.detail) + (w.hint ? ' <em>' + esc(w.hint) + '</em>' : '') + '</li>';
-          }).join('') + '</ul>'
-        : '';
-    }
-
-    $('catPicker').innerHTML = categoryPickerHtml(q.categories || []);
-
-    var selected = q.primary_columns || [];
-    $('colPicker').innerHTML = (q.columns || []).map(function (c) {
-      var checked = selected.indexOf(c.name) !== -1;
-      return '<div class="col-row">' +
-        '<input type="checkbox" value="' + esc(c.name) + '"' + (checked ? ' checked' : '') + ' aria-label="Destacar ' + esc(c.name) + '">' +
-        '<input type="text" data-label-for="' + esc(c.name) + '" value="' + esc(c.label) + '" maxlength="80">' +
-        '<small>' + esc(c.name) + '</small>' +
-      '</div>';
-    }).join('') || '<span class="muted-text">Nenhuma coluna detectada.</span>';
-
-    limitChecks('catPicker', MAX_CATEGORIES, 'catCount');
-    limitChecks('colPicker', MAX_HIGHLIGHTS, 'colCount', ' em destaque');
-    $('editModal').showModal();
-  }
-
-  function saveEditor() {
-    var ctx = state.editing;
-    if (!ctx) return;
-    var q = ctx.query;
-
-    var name = $('editName').value.trim();
-    if (name.length < 3) { toast('Informe o nome da consulta.'); return; }
-
-    var cols = checkedValues('colPicker');
-    if (!cols.length && (q.columns || []).length) { toast('Marque ao menos uma coluna em destaque.'); return; }
-
-    var cats = checkedValues('catPicker');
-    q.name = name;
-    q.categories = cats.length ? cats : ['Outros'];
-    q.description = $('editDesc').value.trim();
-    q.primary_columns = cols;
-
-    // Nomes amigáveis das colunas
-    $('colPicker').querySelectorAll('[data-label-for]').forEach(function (input) {
-      var col = (q.columns || []).filter(function (c) { return c.name === input.dataset.labelFor; })[0];
-      if (col && input.value.trim()) col.label = input.value.trim();
-    });
-
-    if (ctx.isNew) {
-      var r = mergeLibrary([q], true);
-      toast(r.updated ? 'Consulta existente atualizada. Clique em Publicar para enviar ao time.' : 'Consulta cadastrada. Clique em Publicar para enviar ao time.');
-    } else {
-      toast('Consulta salva. Clique em Publicar para enviar ao time.');
-    }
-
-    changed();
-    if (state.openId === q.id) openDrawer(q.id);
-    $('editModal').close();
-  }
-
-  function deleteEditing() {
-    var ctx = state.editing;
-    if (!ctx || ctx.isNew) return;
-    var q = ctx.query;
-    if (!window.confirm('Excluir a consulta "' + q.name + '"?')) return;
-    state.queries = state.queries.filter(function (item) { return item.id !== q.id; });
-    delete state.selected[q.id];
-    closeDrawer();
-    changed();
-    $('editModal').close();
-    toast('Consulta excluída.');
-  }
-
-  /* ---------- Ações em lote ---------- */
-  function openBulkCategories() {
-    var n = selectedIds().length;
-    $('bulkModalSub').textContent = 'As categorias escolhidas substituem as atuais em ' + n + (n === 1 ? ' consulta.' : ' consultas.');
-    $('bulkPicker').innerHTML = categoryPickerHtml([]);
-    limitChecks('bulkPicker', MAX_CATEGORIES, 'bulkPickerCount');
-    $('bulkModal').showModal();
-  }
-
-  function applyBulkCategories() {
-    var cats = checkedValues('bulkPicker');
-    if (!cats.length) { toast('Escolha ao menos uma categoria.'); return; }
-    selectedIds().forEach(function (id) {
-      var q = findQuery(id);
-      if (q) q.categories = cats.slice();
-    });
-    changed();
-    $('bulkModal').close();
-    toast('Categorias aplicadas.');
-  }
-
-  function bulkDelete() {
-    var ids = selectedIds();
-    if (!window.confirm('Excluir ' + ids.length + ' consulta(s) selecionada(s)?')) return;
-    state.queries = state.queries.filter(function (q) { return !state.selected[q.id]; });
-    state.selected = {};
-    changed();
-    toast(ids.length + ' consulta(s) excluída(s).');
-  }
-
-  function clearSelection() {
-    state.selected = {};
-    renderList();
-    renderBulk();
+    if (f.download) downloadQuery(q.id);
+    var a = document.createElement('a');
+    a.href = mail.url;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    closeModal($('requestModal'));
+    toast(f.download ? 'E-mail aberto. Anexe o JSON que foi baixado.' : 'E-mail aberto.');
   }
 
   /* ---------- Eventos ---------- */
-  function bindEvents() {
+  function setSearch(value) {
+    state.search = value;
+    renderList();
+  }
+
+  function clearFilters() {
+    state.search = ''; state.cats = {}; state.onlyFav = false; state.review = '';
+    $('searchInput').value = '';
+    var rf = $('reviewFilter'); if (rf) rf.value = '';
+    renderChips();
+    renderList();
+    if (QH.afterRender) QH.afterRender();
+  }
+
+  function bindCore() {
     on('btnLogout', 'click', logout);
 
-    // Busca e filtros
-    on('searchInput', 'input', function (e) { state.search = e.target.value; renderList(); });
+    // Busca (com pequena espera enquanto digita) e ordenação
+    var onSearch = debounce(function (v) { setSearch(v); }, 140);
+    on('searchInput', 'input', function (e) { onSearch(e.target.value); });
     on('sortSelect', 'change', function (e) { state.sort = e.target.value; renderList(); });
+    on('btnClear', 'click', clearFilters);
 
+    // Chips de categoria (várias ao mesmo tempo)
     on('categoryChips', 'click', function (e) {
-      var chip = e.target.closest('[data-category]');
+      var mode = e.target.closest('[data-catmode]');
+      if (mode) { state.catMode = mode.getAttribute('data-catmode'); renderChips(); renderList(); return; }
+      var chip = e.target.closest('[data-chip]');
       if (!chip) return;
-      state.category = chip.dataset.category;
-      renderAll();
+      var kind = chip.getAttribute('data-chip');
+      if (kind === 'all') { state.cats = {}; state.onlyFav = false; }
+      else if (kind === 'fav') state.onlyFav = !state.onlyFav;
+      else { var c = chip.getAttribute('data-cat'); if (state.cats[c]) delete state.cats[c]; else state.cats[c] = true; }
+      renderChips();
+      renderList();
     });
 
-    // Lista
+    // Lista: clique no card abre os detalhes; botões e caixas têm ação própria
     on('queryList', 'click', function (e) {
       var btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      var id = btn.dataset.id;
-      if (btn.dataset.action === 'open') openDrawer(id);
-      if (btn.dataset.action === 'download') downloadQuery(id);
-      if (btn.dataset.action === 'fav') toggleFav(id);
+      if (btn) {
+        var id = btn.getAttribute('data-id');
+        if (btn.getAttribute('data-action') === 'open') openDrawer(id);
+        if (btn.getAttribute('data-action') === 'download') downloadQuery(id);
+        if (btn.getAttribute('data-action') === 'fav') toggleFav(id);
+        return;
+      }
+      if (e.target.closest('.query-card__select')) return;
+      var card = e.target.closest('.query-card');
+      if (card) openDrawer(card.getAttribute('data-id'));
     });
 
     on('queryList', 'change', function (e) {
       var box = e.target.closest('[data-select]');
       if (!box) return;
-      if (box.checked) state.selected[box.dataset.select] = true;
-      else delete state.selected[box.dataset.select];
-      renderList();
+      var id = box.getAttribute('data-select');
+      if (box.checked) state.selected[id] = true; else delete state.selected[id];
+      var card = box.closest('.query-card');
+      if (card) card.classList.toggle('is-selected', box.checked);
       renderBulk();
+      updateSelectAll();
     });
 
     on('selectAll', 'change', function (e) {
-      visibleQueries().forEach(function (q) {
-        if (e.target.checked) state.selected[q.id] = true;
-        else delete state.selected[q.id];
+      state.view.forEach(function (q) { if (e.target.checked) state.selected[q.id] = true; else delete state.selected[q.id]; });
+      document.querySelectorAll('.query-card').forEach(function (card) {
+        var on = !!state.selected[card.getAttribute('data-id')];
+        card.classList.toggle('is-selected', on);
+        var cb = card.querySelector('[data-select]'); if (cb) cb.checked = on;
       });
-      renderList();
       renderBulk();
     });
 
-    on('btnZipList', 'click', function () { downloadZip(visibleQueries(), 'consultas.zip'); });
+    on('btnZipList', 'click', function () { downloadZip(state.view, 'consultas.zip'); });
+    on('bulkZip', 'click', function () { downloadZip(selectedIds().map(findQuery).filter(Boolean), 'consultas_selecionadas.zip'); });
+    on('bulkClear', 'click', function () { QH.clearSelection(); });
 
-    // Barra em lote
-    on('bulkZip', 'click', function () {
-      downloadZip(selectedIds().map(findQuery).filter(Boolean), 'consultas_selecionadas.zip');
-    });
-    on('bulkClear', 'click', clearSelection);
+    // Carregamento progressivo da lista
+    on('listEnd', 'click', function (e) { if (e.target.closest('[data-more-cards]')) appendCards(); });
+    if ('IntersectionObserver' in window && $('listEnd')) {
+      new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && state.rendered < state.view.length) appendCards();
+      }, { rootMargin: '700px 0px' }).observe($('listEnd'));
+    }
 
-    // Drawer
+    // Painel de detalhes
     on('drawerClose', 'click', closeDrawer);
     on('drawerOverlay', 'click', closeDrawer);
+    on('drawerPrev', 'click', function () { stepDrawer(-1); });
+    on('drawerNext', 'click', function () { stepDrawer(1); });
     on('colSearch', 'input', renderDrawerColumns);
-    on('copyCols', 'click', copyColumns);
-    on('drawerDownload', 'click', function () { downloadQuery(state.openId); });
-    on('drawerFav', 'click', function () {
+    on('copyCols', 'click', function () {
       var q = findQuery(state.openId);
       if (!q) return;
-      toggleFav(q.id);
-      updateFavButton(q);
+      copyText((q.columns || []).map(function (c) { return c.name; }).join('\n')).then(function () { toast('Nomes das colunas copiados.'); }, function () { toast('Não consegui copiar automaticamente.'); });
     });
-
-    // Atalhos
-    document.addEventListener('keydown', function (e) {
-      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-      if (e.key === '/' && !typing && !document.querySelector('dialog[open]')) {
-        e.preventDefault();
-        $('searchInput').focus();
-      }
-      if (e.key === 'Escape' && state.openId && !document.querySelector('dialog[open]')) closeDrawer();
-    });
-
-    if (!ADMIN) return;
-
-    // ----- Somente admin -----
-    on('btnPublish', 'click', publish);
-    on('btnDiscard', 'click', discardDraft);
-
-    // Relatório de importação e guia de mensagens
-    on('btnReport', 'click', function () { openReport(); });
-    on('importGuide', 'click', openGuide);
-    on('reportGuide', 'click', openGuide);
-    on('reportCsv', 'click', reportCsv);
-    on('reportCopy', 'click', reportCopy);
-    on('reportMore', 'click', function () { $('reportModal').close(); switchTab('batch'); $('importModal').showModal(); });
-    on('reportSearch', 'input', renderReport);
-    document.querySelectorAll('.rtab').forEach(function (b) {
-      b.addEventListener('click', function () { state.reportTab = b.getAttribute('data-rtab'); renderReport(); });
-    });
-    on('reportList', 'click', function (e) {
-      var open = e.target.closest('[data-open-query]');
-      if (open) {
-        var q = findQuery(open.getAttribute('data-open-query'));
-        if (q) { $('reportModal').close(); openEditor(q, false); }
-        return;
-      }
-      var more = e.target.closest('[data-more]');
-      if (more) { var det = more.closest('details'); if (det) fillGroup(det); }
-    });
-    on('btnImport', 'click', function () { switchTab('single'); $('importModal').showModal(); });
-
-    on('drawerEdit', 'click', function () {
+    on('drawerDownload', 'click', function () { downloadQuery(state.openId); });
+    on('drawerCopyJson', 'click', function () {
       var q = findQuery(state.openId);
-      if (q) openEditor(q, false);
+      if (!q) return;
+      copyText(JSON.stringify(q.raw_json, null, 2)).then(function () { toast('JSON copiado.'); }, function () { toast('Não consegui copiar automaticamente.'); });
     });
-
-    on('bulkCategories', 'click', openBulkCategories);
-    on('bulkApply', 'click', applyBulkCategories);
-    on('bulkPicker', 'change', function () { limitChecks('bulkPicker', MAX_CATEGORIES, 'bulkPickerCount'); });
-    on('bulkDelete', 'click', bulkDelete);
-
-    document.querySelectorAll('.tabs__btn').forEach(function (b) {
-      b.addEventListener('click', function () { switchTab(b.dataset.tab); });
+    on('drawerCopyLink', 'click', function () {
+      var q = findQuery(state.openId);
+      if (!q) return;
+      if (!q.num) { toast('Esta consulta ainda não tem ID. O link fica disponível depois que o administrador publicar.'); return; }
+      copyText(linkFor(q)).then(function () { toast('Link da consulta ' + formatId(q.num) + ' copiado.'); }, function () { toast('Não consegui copiar automaticamente.'); });
     });
-    on('singleFile', 'change', function (e) { handleSingleFile(e.target.files[0]); });
-    on('btnPaste', 'click', handlePaste);
-    on('batchFile', 'change', function (e) { handleBatch(e.target.files); });
+    on('drawerFav', 'click', function () { if (state.openId) toggleFav(state.openId); });
+    on('drawerRequest', 'click', function () { openRequest(findQuery(state.openId)); });
 
-    [['batchDrop', handleBatch], ['singleDrop', function (files) { handleSingleFile(files[0]); }]].forEach(function (pair) {
-      var zone = $(pair[0]);
-      ['dragenter', 'dragover'].forEach(function (evt) {
-        zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.add('is-over'); });
-      });
-      ['dragleave', 'drop'].forEach(function (evt) {
-        zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.remove('is-over'); });
-      });
-      zone.addEventListener('drop', function (e) { pair[1](e.dataTransfer.files); });
-    });
+    // Pedido de ajuste
+    on('reqText', 'input', function (e) { $('reqCount').textContent = e.target.value.length + ' / 1000'; $('reqError').textContent = ''; });
+    on('reqSend', 'click', function () { sendRequest(false); });
+    on('reqCopy', 'click', function () { sendRequest(true); });
 
-    on('catPicker', 'change', function () { limitChecks('catPicker', MAX_CATEGORIES, 'catCount'); });
-    on('colPicker', 'change', function () { limitChecks('colPicker', MAX_HIGHLIGHTS, 'colCount', ' em destaque'); });
-    on('editSave', 'click', saveEditor);
-    on('editDelete', 'click', deleteEditing);
-
-    // Fechar modais (× / Cancelar / clique fora)
+    // Pop-ups: fechar com ×, Cancelar, Esc ou clique fora (com animação)
     document.querySelectorAll('[data-close]').forEach(function (btn) {
-      btn.addEventListener('click', function () { $(btn.dataset.close).close(); });
+      btn.addEventListener('click', function () { closeModal($(btn.getAttribute('data-close'))); });
     });
     document.querySelectorAll('dialog').forEach(function (dlg) {
-      dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+      var heading = dlg.querySelector('.modal__title');
+      if (heading) { if (!heading.id) heading.id = dlg.id + 'Title'; dlg.setAttribute('aria-labelledby', heading.id); }
+      dlg.addEventListener('cancel', function (e) { e.preventDefault(); closeModal(dlg); });
+      dlg.addEventListener('mousedown', function (e) {
+        if (e.target !== dlg) return;
+        var r = dlg.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeModal(dlg);
+      });
     });
 
-    // Avisa antes de sair com alterações não publicadas
-    window.addEventListener('beforeunload', function (e) {
-      if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
+    // Voltar ao topo
+    var toTop = $('toTop'), ticking = false;
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { toTop.classList.toggle('is-visible', window.scrollY > 700); ticking = false; });
+    }, { passive: true });
+    toTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }); });
+
+    window.addEventListener('hashchange', openFromHash);
+
+    // Atalhos: "/" busca · setas navegam no painel · Esc fecha o painel
+    document.addEventListener('keydown', function (e) {
+      var tag = document.activeElement ? document.activeElement.tagName : '';
+      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (document.activeElement && document.activeElement.isContentEditable);
+      var modalOpen = !!document.querySelector('dialog[open]');
+      if (e.key === '/' && !typing && !modalOpen) { e.preventDefault(); $('searchInput').focus(); return; }
+      if (state.openId && !typing && !modalOpen) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); stepDrawer(-1); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); stepDrawer(1); }
+      }
+      if (e.key === 'Escape' && state.openId && !modalOpen) closeDrawer();
     });
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    bindEvents();
-    init();
-  });
+  /* ---------- Início ---------- */
+  function finishLoad() {
+    state.loaded = true;
+    recount();
+    renderAll();
+    openFromHash();
+    if (QH.hooks.loaded) QH.hooks.loaded();
+  }
+
+  function boot() {
+    bindCore();
+    if (QH.hooks.bind) QH.hooks.bind();
+    loadFavs();
+    loadUser();
+    var loader = QH.loadLibrary || function () {
+      return fetchLibrary().then(function (list) { state.queries = list; }).catch(function (err) { state.loadError = err.message; toast(err.message); });
+    };
+    Promise.resolve(loader()).then(finishLoad, finishLoad);
+  }
+
+  // API para o painel admin
+  QH.$ = $; QH.on = on; QH.esc = esc; QH.normalize = normalize; QH.slug = slug; QH.toast = toast; QH.download = download; QH.copyText = copyText;
+  QH.openModal = openModal; QH.closeModal = closeModal; QH.ensureJSZip = ensureJSZip; QH.findQuery = findQuery; QH.selectedIds = selectedIds;
+  QH.visibleQueries = visibleQueries; QH.renderAll = renderAll; QH.renderList = renderList; QH.renderChips = renderChips; QH.renderBulk = renderBulk;
+  QH.dataChanged = dataChanged; QH.recount = recount; QH.openDrawer = openDrawer; QH.closeDrawer = closeDrawer; QH.invalidate = invalidate;
+  QH.downloadQuery = downloadQuery; QH.formatId = formatId; QH.linkFor = linkFor; QH.categoryOf = categoryOf; QH.fetchLibrary = fetchLibrary;
+  QH.reducedMotion = reducedMotion; QH.debounce = debounce;
+  QH.clearSelection = function () {
+    state.selected = {};
+    document.querySelectorAll('.query-card.is-selected').forEach(function (c) {
+      c.classList.remove('is-selected');
+      var cb = c.querySelector('[data-select]'); if (cb) cb.checked = false;
+    });
+    renderBulk();
+    updateSelectAll();
+  };
+  QH.setSearch = function (v) { $('searchInput').value = v; setSearch(v); };
+  QH.finishLoad = finishLoad;
+
+  document.addEventListener('DOMContentLoaded', boot);
 })();

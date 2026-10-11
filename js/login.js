@@ -35,12 +35,14 @@
       client_id: config.clientId,
       callback: handleCredential
     });
-    window.google.accounts.id.renderButton(document.getElementById('googleButton'), {
-      theme: 'outline',
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var box = document.getElementById('googleButton');
+    window.google.accounts.id.renderButton(box, {
+      theme: dark ? 'filled_black' : 'outline',
       size: 'large',
       text: 'signin_with',
       shape: 'rectangular',
-      width: 320
+      width: Math.max(200, Math.min(320, box.parentNode.clientWidth || 320))
     });
   }
 
