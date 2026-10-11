@@ -36,9 +36,11 @@ function isAdminPath(pathname) {
   return pathname === '/admin.html' || pathname === '/admin' || pathname.startsWith('/api/admin/');
 }
 
-// Rotas que só o MASTER acessa: gerência de usuários e logs de acesso.
+// Rotas que só o MASTER acessa: gerência de usuários, logs e painel de segurança.
 function isMasterPath(pathname) {
-  return pathname.startsWith('/api/admin/access') || pathname.startsWith('/api/admin/logs');
+  return pathname.startsWith('/api/admin/access') ||
+         pathname.startsWith('/api/admin/logs') ||
+         pathname.startsWith('/api/admin/status');
 }
 
 function json(status, body) {

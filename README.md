@@ -19,7 +19,7 @@ Biblioteca de consultas dinâmicas do time de Sucesso do Cliente · Magazord.
 - **master** = "master master": faz tudo, inclusive gerenciar quem entra e ler os logs de acesso.
 - **admin** = "sobe consulta": usa o painel e publica, mas **não** mexe em usuários nem vê logs.
 - Os e-mails em `ADMIN_EMAILS` (Vercel) são **masters fixos** (owners): imutáveis, nunca perdem o acesso. É o lugar recomendado para definir `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` como masters. Masters adicionais podem ser definidos no painel (perfil "Master").
-- No painel, **Segurança e acesso** (qualquer admin) mostra a regra vigente — por padrão "somente contas @magazord.com.br" — e quem tem acesso elevado. **Usuários e permissões** e **Logs de acesso** só aparecem para master.
+- No painel, **só o master** vê **Segurança e acesso** (a regra vigente — por padrão "somente contas @magazord.com.br" — e quem tem acesso elevado), **Usuários e permissões** e **Logs de acesso**. O admin comum só vê o cadastro/publicação.
 - O servidor **reconfere o perfil e o domínio a cada requisição** (não confia no cookie): mudar a lista vale em até ~1 minuto, inclusive para quem já está logado.
 
 ## Estrutura
