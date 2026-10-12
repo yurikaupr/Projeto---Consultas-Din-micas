@@ -221,15 +221,15 @@ Agora há quatro perfis, conferidos **no servidor a cada requisição**:
 - `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` são masters (recomenda-se `ADMIN_EMAILS`, que são owners imutáveis).
 
 ### 6.2 Como a separação é garantida (defesa em camadas)
-1. `middleware.js` (Edge): `/admin.html` e `/api/admin/publish` exigem master **ou** admin; `/api/admin/access` e `/api/admin/logs` exigem **master** (`isMasterPath` + `isMaster`).
-2. Cada rota reconfere: `requireAdmin` (painel) em `publish`/`status`; `requireMaster` em `access`/`logs`.
+1. `middleware.js` (Edge): `/admin.html` e `/api/admin/publish` exigem master **ou** admin; `/api/admin/access`, `/api/admin/logs` e `/api/admin/status` exigem **master** (`isMasterPath` + `isMaster`).
+2. Cada rota reconfere: `requireAdmin` (painel) em `publish`; `requireMaster` em `access`/`logs`/`status`.
 3. O cliente só **esconde** botões por capacidade (`/api/me`); quem forjar o DOM/console ainda bate na checagem do servidor.
 4. O perfil vem sempre da lista no servidor — **nunca** do cookie/JWT.
 
 ### 6.3 Garantia do domínio (a "certeza" pedida)
 - Login: só passa com `email_verified`, `hd` == domínio **e** e-mail terminando em `@magazord.com.br` (ou quem estiver explicitamente na lista). Qualquer outra conta Google é recusada.
 - **Endurecimento novo:** `canStay` passou a **reconferir o domínio/lista a cada requisição**. Antes, no modo "empresa", uma sessão sobrevivia mesmo após a pessoa sair da lista; agora um parceiro externo removido perde o acesso em ~45s.
-- Painel **Segurança e acesso** (`/api/admin/status`) mostra, para qualquer admin, a regra vigente, o domínio, quem é master/admin e as garantias ativas — é o lugar para ter a certeza.
+- Painel **Segurança e acesso** (`/api/admin/status`) — **somente master** — mostra a regra vigente, o domínio, quem é master/admin e as garantias ativas: é o lugar para ter a certeza.
 
 ### 6.4 Logs de acesso (somente master)
 - Eventos: `login_ok`, `login_denied`, `publish_ok`, `access_updated`. Nunca token nem conteúdo de consulta; guardam e-mail, perfil, detalhe, IP e horário.
@@ -244,5 +244,75 @@ Depois do deploy, confirme a separação (com a sessão de um **admin** que não
 # admin logado: deve publicar, mas ser barrado em usuários e logs
 curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/access   # espere 403
 curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/logs     # espere 403
-curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/status   # espere 200
+curl -s -o /dev/null -w '%{http_code}\n' -H "Cookie: $QH_COOKIE" https://queryhub-nu.vercel.app/api/admin/status   # espere 403
 ```
+
+---
+
+## 7. Auditoria adversarial do próprio RBAC (e correção)
+
+Rodei uma auditoria com 5 lentes independentes + verificação adversarial (cada
+achado teve de ser confirmado tentando refutá-lo no código real).
+
+### 7.1 Achado confirmado (introduzido por mim e já corrigido)
+**DoS/abuso via log no `/api/login` (rota pública).** A versão anterior deste
+trabalho gravava o log com `await appendAudit(...)` **a cada login negado**.
+Como `/api/login` é público e o `GITHUB_TOKEN` é compartilhado com o controle de
+acesso, um atacante com qualquer token Google válido poderia repetir logins
+negados e, a cada um, disparar ~3 chamadas ao GitHub — esgotando a cota
+(derrubando publicação/edição de acessos e, em instâncias frias, 503 geral) e
+poluindo/evacuando o log. Severidade: alta.
+
+**Correção aplicada:**
+- O log agora é **enfileirado e gravado em lote** (`recordAudit`), no máximo
+  **~1 commit a cada 20s por instância**; o login **não espera** o GitHub. Um
+  flood vira, no máximo, 1 commit por janela — não 1 por requisição.
+- Ao estourar o teto do buffer, descartam-se primeiro os `login_denied` (ruído),
+  **preservando** `login_ok`/`publish_ok`/`access_updated` (anti-forense).
+- Ações autenticadas e raras (publicar, mudar acessos) gravam **na hora**
+  (`appendAudit` = `recordAudit` immediate).
+- **Rate limit** por IP no `/api/login` (30/min por instância → 429).
+- Prova: `node test/audit.test.mjs` (500 eventos ⇒ ≤1 commit; immediate grava;
+  importantes preservados; nada de token/segredo no log).
+
+### 7.2 Endurecimento extra (defesa em profundidade)
+- `middleware.js`: decide bloqueio/perfil sobre o caminho **normalizado**
+  (decodificado + minúsculas), fechando truques de %-encoding/maiúsculas; e
+  passa a 404 também `/data/audit-log.json`.
+
+### 7.3 Achados descartados na verificação
+- "Viewer leria `/data/audit-log.json`": **falso** por padrão — o log vive numa
+  branch separada que a Vercel não publica; o arquivo não existe no deploy
+  (mesmo assim adicionei o 404 por garantia).
+- "Log no repo vaza dados": **falso** — repositório privado; `access.json` já
+  continha e-mails/papéis. O log só acrescenta IP/horário, sem token.
+
+### 7.4 Testes
+- `node test/access.test.mjs` — 59 verificações da matriz (perfis, domínio, modo
+  lista, falha-fechada, separação master × admin nas rotas, inclusive `status`).
+- `node test/audit.test.mjs` — 6 verificações da defesa anti-abuso do log.
+
+---
+
+## 8. Privacidade das mensagens + controle de deploy (ajustes)
+
+- **Mensagens genéricas (anti-engenharia social):** nem a tela de login nem as
+  respostas revelam o domínio ou quem tem acesso. `/api/config` não devolve mais
+  `domain`; `/api/me` não devolve `domain`/`mode`; a negação de login responde
+  `access_denied` genérico; a tela de login diz apenas "Acesso restrito. Entre
+  com uma conta autorizada." e não exibe o nome da organização. Quem está fora
+  não descobre quais contas/domínios entram; quem está dentro vê a política no
+  painel **Segurança** (somente master).
+- **Admin ≠ Segurança:** o painel "Segurança e acesso", "Usuários" e "Logs" são
+  somente master (menu escondido + `requireMaster` + middleware). Admin só entra
+  no painel e publica consultas. (Obs.: um e-mail em `ADMIN_EMAILS` na Vercel é
+  **master fixo**, independentemente do papel no painel — para testar como admin,
+  use um e-mail que NÃO esteja em `ADMIN_EMAILS`.)
+- **Deploy dos logs:** os logs vão para a branch `queryhub-audit`, e o
+  `vercel.json` agora traz `git.deploymentEnabled` desligando build/deploy dessa
+  branch. Logins **não** republicam o site; os eventos são gravados em lote
+  (≤ ~1 commit/20s por instância). 50 logins simultâneos ⇒ nenhum deploy e, no
+  máximo, 1 commit pequeno por janela — não 50.
+- **Download:** o arquivo baixado usa o **nome original** (`source_filename`) e o
+  **conteúdo original** (`raw_json`), sem prefixar ID/nome. (Comportamento já
+  presente no código; passa a valer quando este build subir.)

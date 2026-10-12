@@ -1,15 +1,14 @@
 // Resumo da política de acesso (somente leitura) para o painel de segurança.
-// Qualquer usuário do painel (master ou admin) pode ver — dá a "certeza" de
-// quem entra e sob qual regra. Não devolve a lista completa de viewers (só a
-// contagem); os e-mails de master/admin aparecem porque são o time de operação.
-import { requireAdmin } from '../_session.js';
+// SOMENTE MASTER (requireMaster + checagem no middleware): dá a "certeza" de
+// quem entra e sob qual regra, e lista quem tem acesso elevado.
+import { requireMaster } from '../_session.js';
 import { isMaster, loadAccess } from '../_access.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
 
-  const session = await requireAdmin(req, res);   // painel (master ou admin)
+  const session = await requireMaster(req, res);   // somente master
   if (!session) return;
   const actor = String(session.email).toLowerCase();
 

@@ -19,7 +19,7 @@ Biblioteca de consultas dinâmicas do time de Sucesso do Cliente · Magazord.
 - **master** = "master master": faz tudo, inclusive gerenciar quem entra e ler os logs de acesso.
 - **admin** = "sobe consulta": usa o painel e publica, mas **não** mexe em usuários nem vê logs.
 - Os e-mails em `ADMIN_EMAILS` (Vercel) são **masters fixos** (owners): imutáveis, nunca perdem o acesso. É o lugar recomendado para definir `yuri.klug@magazord.com.br` e `yurikaupr@gmail.com` como masters. Masters adicionais podem ser definidos no painel (perfil "Master").
-- No painel, **Segurança e acesso** (qualquer admin) mostra a regra vigente — por padrão "somente contas @magazord.com.br" — e quem tem acesso elevado. **Usuários e permissões** e **Logs de acesso** só aparecem para master.
+- No painel, **só o master** vê **Segurança e acesso** (a regra vigente — por padrão "somente contas @magazord.com.br" — e quem tem acesso elevado), **Usuários e permissões** e **Logs de acesso**. O admin comum só vê o cadastro/publicação.
 - O servidor **reconfere o perfil e o domínio a cada requisição** (não confia no cookie): mudar a lista vale em até ~1 minuto, inclusive para quem já está logado.
 
 ## Estrutura
@@ -45,6 +45,7 @@ middleware.js               Exige sessão; /admin exige painel; usuários/logs e
 data/queries.json           Biblioteca publicada
 data/access.json            Lista de acessos (editada pelo master)
 test/access.test.mjs        Testes da matriz de acesso (node)
+test/audit.test.mjs         Testes anti-abuso do log (node)
 vercel.json                 Cabeçalhos de segurança e cache
 ```
 
@@ -90,4 +91,5 @@ Depois de criar ou alterar variáveis, faça **Redeploy**.
 - CSP restritiva, HSTS (`includeSubDomains`/`preload`), COOP, X-Frame-Options, nosniff e sem referrer. `/data/*` com `no-store`. Nenhum segredo no navegador.
 - **Logs de acesso** (login, login negado, publicação, mudança de acessos) ficam em `data/audit-log.json` numa branch separada; só master vê. Nunca guardam token nem conteúdo de consulta.
 - Para revogar: `BLOCKED_EMAILS` ou o perfil "Bloqueado" (uma pessoa), ou troque o `SESSION_SECRET` (todos).
-- Testes da matriz de acesso: `node test/access.test.mjs`.
+- Proteções de abuso: rate limit por IP no `/api/login` (429) e logs gravados em lote (no máx. ~1 commit/20s por instância), para que um flood de logins não gaste a cota do GitHub.
+- Testes: `node test/access.test.mjs` (matriz de acesso) e `node test/audit.test.mjs` (anti-abuso do log).

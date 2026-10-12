@@ -36,9 +36,11 @@ function isAdminPath(pathname) {
   return pathname === '/admin.html' || pathname === '/admin' || pathname.startsWith('/api/admin/');
 }
 
-// Rotas que só o MASTER acessa: gerência de usuários e logs de acesso.
+// Rotas que só o MASTER acessa: gerência de usuários, logs e painel de segurança.
 function isMasterPath(pathname) {
-  return pathname.startsWith('/api/admin/access') || pathname.startsWith('/api/admin/logs');
+  return pathname.startsWith('/api/admin/access') ||
+         pathname.startsWith('/api/admin/logs') ||
+         pathname.startsWith('/api/admin/status');
 }
 
 function json(status, body) {
@@ -56,8 +58,14 @@ function redirect(location) {
 export default async function middleware(request) {
   const { pathname } = new URL(request.url);
 
-  // A lista de acessos só é lida pela API do painel, nunca como arquivo
-  if (pathname === '/data/access.json') return new Response('Not found', { status: 404 });
+  // Caminho normalizado (decodificado + minúsculas) só para as DECISÕES de
+  // bloqueio/perfil — assim truques de %-encoding ou maiúsculas não escapam
+  // da porta (o arquivo servido continua sendo o pathname original).
+  let gate = pathname;
+  try { gate = decodeURIComponent(pathname).toLowerCase(); } catch (err) { gate = pathname.toLowerCase(); }
+
+  // Arquivos sensíveis nunca são servidos como estático (só via API do painel)
+  if (gate === '/data/access.json' || gate === '/data/audit-log.json') return new Response('Not found', { status: 404 });
 
   if (PUBLIC_PATHS.includes(pathname)) return next();
 
@@ -93,13 +101,13 @@ export default async function middleware(request) {
           ? new Response('Acesso revogado.', { status: 403, headers: { 'Cache-Control': 'no-store' } })
           : json(403, { error: 'revoked' });
       }
-      if (isAdminPath(pathname)) {
+      if (isAdminPath(gate)) {
         // Primeiro: precisa poder entrar no painel (master ou admin)
         if (!isAdminEmail(cfg, email)) {
-          return pathname.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
+          return gate.startsWith('/api/') ? json(403, { error: 'forbidden' }) : redirect('/');
         }
         // Depois: rotas de master (usuários e logs) exigem master de verdade
-        if (isMasterPath(pathname) && !isMaster(cfg, email)) {
+        if (isMasterPath(gate) && !isMaster(cfg, email)) {
           return json(403, { error: 'forbidden_master' });
         }
       }

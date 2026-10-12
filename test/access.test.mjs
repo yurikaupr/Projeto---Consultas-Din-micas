@@ -96,7 +96,7 @@ function allowed(email, path) {
   const adminPath = path === '/admin.html' || path.startsWith('/api/admin/');
   if (!adminPath) return true;
   if (!A.isAdminEmail(cfg, email)) return false;
-  const masterPath = path.startsWith('/api/admin/access') || path.startsWith('/api/admin/logs');
+  const masterPath = path.startsWith('/api/admin/access') || path.startsWith('/api/admin/logs') || path.startsWith('/api/admin/status');
   if (masterPath && !A.isMaster(cfg, email)) return false;
   return true;
 }
@@ -105,10 +105,12 @@ check('ADMIN abre o painel', allowed(ADMIN_E, '/admin.html'));
 check('ADMIN publica consultas', allowed(ADMIN_E, '/api/admin/publish'));
 check('ADMIN é BARRADO em usuários (access)', !allowed(ADMIN_E, '/api/admin/access'));
 check('ADMIN é BARRADO em logs', !allowed(ADMIN_E, '/api/admin/logs'));
+check('ADMIN é BARRADO no painel de segurança (status)', !allowed(ADMIN_E, '/api/admin/status'));
 check('MASTER abre o painel', allowed(MASTER_E, '/admin.html'));
 check('MASTER publica consultas', allowed(MASTER_E, '/api/admin/publish'));
 check('MASTER gerencia usuários', allowed(MASTER_E, '/api/admin/access'));
 check('MASTER vê logs', allowed(MASTER_E, '/api/admin/logs'));
+check('MASTER vê o painel de segurança (status)', allowed(MASTER_E, '/api/admin/status'));
 check('VIEWER é BARRADO no painel', !allowed(VIEWER_E, '/admin.html'));
 check('VIEWER é BARRADO em publish', !allowed(VIEWER_E, '/api/admin/publish'));
 check('owner (master fixo) vê logs', allowed('yuri.klug@magazord.com.br', '/api/admin/logs'));

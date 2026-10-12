@@ -23,8 +23,6 @@ export default async function handler(req, res) {
     canPanel: panel,            // entra no painel admin
     canPublish: panel,          // sobe/publica consultas
     canManageUsers: master,     // gerencia usuários e acessos
-    canViewLogs: master,        // vê os logs de acesso
-    domain: cfg.domain,
-    mode: cfg.mode
+    canViewLogs: master         // vê os logs de acesso
   });
 }
