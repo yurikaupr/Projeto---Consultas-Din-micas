@@ -66,6 +66,6 @@
       'Acesso restrito. Entre com uma conta autorizada.';
     waitForGoogle(config, 40);
   }).catch(function () {
-    showError('O login só funciona no site publicado na Vercel (ou com "vercel dev").');
+    showError('Não foi possível iniciar o login agora. Tente novamente em instantes.');
   });
 })();
