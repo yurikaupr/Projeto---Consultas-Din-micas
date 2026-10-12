@@ -1,13 +1,5 @@
 {
   "version": 1,
   "mode": "domain",
-  "users": [
-    {
-      "email": "yurikaupr@gmail.com",
-      "name": "",
-      "role": "admin",
-      "added_by": "yuriklugpr@gmail.com",
-      "added_at": 1791830250128
-    }
-  ]
+  "users": []
 }
