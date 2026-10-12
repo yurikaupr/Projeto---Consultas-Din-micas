@@ -291,3 +291,28 @@ poluindo/evacuando o log. Severidade: alta.
 - `node test/access.test.mjs` — 59 verificações da matriz (perfis, domínio, modo
   lista, falha-fechada, separação master × admin nas rotas, inclusive `status`).
 - `node test/audit.test.mjs` — 6 verificações da defesa anti-abuso do log.
+
+---
+
+## 8. Privacidade das mensagens + controle de deploy (ajustes)
+
+- **Mensagens genéricas (anti-engenharia social):** nem a tela de login nem as
+  respostas revelam o domínio ou quem tem acesso. `/api/config` não devolve mais
+  `domain`; `/api/me` não devolve `domain`/`mode`; a negação de login responde
+  `access_denied` genérico; a tela de login diz apenas "Acesso restrito. Entre
+  com uma conta autorizada." e não exibe o nome da organização. Quem está fora
+  não descobre quais contas/domínios entram; quem está dentro vê a política no
+  painel **Segurança** (somente master).
+- **Admin ≠ Segurança:** o painel "Segurança e acesso", "Usuários" e "Logs" são
+  somente master (menu escondido + `requireMaster` + middleware). Admin só entra
+  no painel e publica consultas. (Obs.: um e-mail em `ADMIN_EMAILS` na Vercel é
+  **master fixo**, independentemente do papel no painel — para testar como admin,
+  use um e-mail que NÃO esteja em `ADMIN_EMAILS`.)
+- **Deploy dos logs:** os logs vão para a branch `queryhub-audit`, e o
+  `vercel.json` agora traz `git.deploymentEnabled` desligando build/deploy dessa
+  branch. Logins **não** republicam o site; os eventos são gravados em lote
+  (≤ ~1 commit/20s por instância). 50 logins simultâneos ⇒ nenhum deploy e, no
+  máximo, 1 commit pequeno por janela — não 50.
+- **Download:** o arquivo baixado usa o **nome original** (`source_filename`) e o
+  **conteúdo original** (`raw_json`), sem prefixar ID/nome. (Comportamento já
+  presente no código; passa a valer quando este build subir.)

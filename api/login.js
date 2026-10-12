@@ -61,7 +61,8 @@ export default async function handler(req, res) {
     // Enfileira (NÃO bloqueia, NÃO faz commit por requisição): rota pública.
     recordAudit({ ts: new Date().toISOString(), event: 'login_denied', email: email, role: null, detail: decision.reason, ip: clientIp(req) });
     if (decision.reason === 'unavailable') return res.status(503).json({ error: 'access_unavailable' });
-    return res.status(403).json({ error: 'domain_not_allowed' });
+    // Resposta genérica de propósito: não revela domínio nem motivo (anti-engenharia social)
+    return res.status(403).json({ error: 'access_denied' });
   }
 
   // 3) Cria a sessão (cookie assinado, HttpOnly). O papel é master | admin | viewer.

@@ -15,7 +15,7 @@
     }).then(function (res) {
       if (res.ok) { window.location.replace('/'); return; }
       if (res.status === 403) {
-        showError('Esta conta não tem acesso. Entre com seu e-mail corporativo da Magazord.');
+        showError('Esta conta não tem acesso.');
       } else if (res.status === 503) {
         res.json().then(function (d) {
           showError(d && d.error === 'access_unavailable'
@@ -60,9 +60,10 @@
     if (!res.ok) throw new Error('config');
     return res.json();
   }).then(function (config) {
-    if (!config.clientId) { showError('O acesso ainda não foi configurado (GOOGLE_CLIENT_ID).'); return; }
+    if (!config.clientId) { showError('O acesso ainda não foi configurado.'); return; }
+    // Mensagem genérica: não revela o domínio/contas que têm acesso
     document.getElementById('loginText').textContent =
-      'Acesso restrito a contas @' + config.domain + '. Entre com sua conta Google corporativa.';
+      'Acesso restrito. Entre com uma conta autorizada.';
     waitForGoogle(config, 40);
   }).catch(function () {
     showError('O login só funciona no site publicado na Vercel (ou com "vercel dev").');

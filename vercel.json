@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "queryhub-audit": false
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
