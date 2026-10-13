@@ -3,6 +3,13 @@
   "mode": "domain",
   "users": [
     {
+      "email": "camila.sousa@magazord.com.br",
+      "name": "Camila Sousa",
+      "role": "master",
+      "added_by": "yuri.klug@magazord.com.br",
+      "added_at": 1791911236335
+    },
+    {
       "email": "tiago.zamban@magazord.com.br",
       "name": "Tiago Zamban",
       "role": "master",
