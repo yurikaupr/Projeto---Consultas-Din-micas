@@ -1,5 +1,20 @@
 {
   "version": 1,
   "mode": "domain",
-  "users": []
+  "users": [
+    {
+      "email": "tiago.zamban@magazord.com.br",
+      "name": "Tiago Zamban",
+      "role": "master",
+      "added_by": "yuriklugpr@gmail.com",
+      "added_at": 1791895461782
+    },
+    {
+      "email": "guilherme.rocha@magazord.com.br",
+      "name": "Guilherme Rocha",
+      "role": "master",
+      "added_by": "yuriklugpr@gmail.com",
+      "added_at": 1791895461782
+    }
+  ]
 }
