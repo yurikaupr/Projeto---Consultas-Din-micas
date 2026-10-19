@@ -75,7 +75,7 @@ vercel.json                 Cabeçalhos de segurança e cache
 | `GITHUB_BRANCH` | branch de produção, `main` (opcional) |
 | `GITHUB_AUDIT_BRANCH` | opcional: branch onde os **logs** são gravados (padrão `queryhub-audit`). Mantenha-a **diferente** da branch de produção para que registrar logs **não** dispare um redeploy. É criada sozinha na primeira vez. |
 | `ACCESS_LOG` | opcional: `off` desliga o registro de logs (padrão: ligado quando o GitHub está configurado) |
-| `SESSION_HOURS` | duração do login em horas, de 1 a 24 (padrão 8) |
+| `SESSION_HOURS` | duração do login em horas, de 1 a 24 (padrão 1) |
 | `ALLOWED_EMAILS` | opcional: se preenchida, só estes e-mails (e os masters) entram — força o modo "somente lista" |
 | `BLOCKED_EMAILS` | opcional: e-mails bloqueados na hora, mesmo com login aberto |
 | `EXTRA_ALLOWED_EMAILS` | opcional: e-mails extras só para consulta |
