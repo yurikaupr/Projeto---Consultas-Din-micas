@@ -175,7 +175,7 @@
     <div class="modal__head">
       <div>
         <h2 class="modal__title">Pedir ajuste</h2>
-        <p class="modal__sub">Descreva o que precisa. Vamos montar um e-mail já com os dados da consulta.</p>
+        <p class="modal__sub">Descreva o que precisa. Copiamos os dados da consulta para você colar no ticket do Zendesk.</p>
       </div>
       <button type="button" class="icon-btn" data-close="requestModal" aria-label="Fechar">×</button>
     </div>
@@ -216,14 +216,15 @@
         <label class="check check--block"><input type="checkbox" id="reqInline"><span id="reqInlineLabel">Colar o JSON no corpo do e-mail<small>Só para consultas pequenas.</small></span></label>
       </div>
 
-      <p class="req-to">Será enviado para <code id="reqTo"></code>. <span id="reqNote"></span></p>
+      <p class="req-to">Abre um ticket novo no Zendesk. Cole o texto (Ctrl+V) na descrição. Ou use o e-mail para <code id="reqTo"></code>. <span id="reqNote"></span></p>
     </div>
 
     <div class="modal__foot">
-      <button type="button" class="btn" id="reqCopy">Copiar texto do e-mail</button>
+      <button type="button" class="btn" id="reqCopy">Copiar texto</button>
       <div class="modal__foot-actions">
         <button type="button" class="btn" data-close="requestModal">Cancelar</button>
-        <button type="button" class="btn btn--primary" id="reqSend">Abrir e-mail</button>
+        <button type="button" class="btn" id="reqSend">Abrir e-mail</button>
+        <button type="button" class="btn btn--primary" id="reqZendesk">Abrir no Zendesk</button>
       </div>
     </div>
   </dialog>
@@ -231,6 +232,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" class="toast__action hidden" id="toastAction"></button></div>
   <button type="button" class="to-top" id="toTop" aria-label="Voltar ao topo">↑</button>
 
-  <script src="js/app.js?v=3.4.0" defer></script>
+  <script src="js/app.js?v=3.5.0" defer></script>
 </body>
 </html>
