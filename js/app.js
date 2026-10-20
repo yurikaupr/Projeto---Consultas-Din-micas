@@ -15,7 +15,7 @@
   var MAILTO_LIMIT = 1900;                            // tamanho máximo do link de e-mail (alguns programas cortam acima disso)
   var MAX_CATEGORIES = 3;
   var MAX_HIGHLIGHTS = 4;
-  var PER_PAGE = 30;                                  // consultas por página
+  var PER_PAGE = 20;                                  // consultas por página
   var NEW_DAYS = 7;
   var INK = '#17202a';
 
