@@ -371,6 +371,23 @@ mark { background: var(--mark-bg); color: inherit; border-radius: 3px; padding: 
 
 .list-end { padding: 14px 0; text-align: center; font-size: 12px; color: var(--muted); }
 
+/* Paginação */
+.pager { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+.pager__btn {
+  min-width: 36px; height: 36px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.pager__btn:hover:not(:disabled):not(.is-active) { background: var(--surface-2); border-color: var(--accent-line); }
+.pager__btn:disabled { opacity: .45; cursor: default; }
+.pager__btn.is-active {
+  background: var(--accent); border-color: var(--accent); color: #fff; cursor: default;
+}
+.pager__gap { min-width: 20px; text-align: center; color: var(--muted); }
+.pager__info { margin-top: 10px; font-size: 12px; color: var(--muted); }
+
 /* Esqueleto de carregamento */
 .skeleton-list { display: grid; gap: 10px; }
 .skeleton-card { height: 130px; border-radius: var(--radius); border: 1px solid var(--line);

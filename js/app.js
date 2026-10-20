@@ -15,7 +15,7 @@
   var MAILTO_LIMIT = 1900;                            // tamanho máximo do link de e-mail (alguns programas cortam acima disso)
   var MAX_CATEGORIES = 3;
   var MAX_HIGHLIGHTS = 4;
-  var PAGE = 60;                                      // cards desenhados por vez
+  var PER_PAGE = 30;                                  // consultas por página
   var NEW_DAYS = 7;
   var INK = '#17202a';
 
@@ -45,8 +45,8 @@
     review: '',         // filtro de revisão (admin)
     selected: {},
     openId: null,
-    view: [],           // consultas da lista atual, já filtradas e ordenadas
-    rendered: 0,
+    view: [],           // consultas da lista atual, já filtradas e ordenadas (todas as páginas)
+    page: 1,            // página atual da lista
     counts: { all: 0, fav: 0, byCat: {} },
     loaded: false,
     user: null,
@@ -497,29 +497,81 @@
     $('selectAll').checked = v.length > 0 && v.every(function (q) { return state.selected[q.id]; });
   }
 
-  function updateListEnd() {
-    var end = $('listEnd'), n = state.view.length, r = state.rendered;
-    if (r >= n) { end.classList.add('hidden'); return; }
-    end.classList.remove('hidden');
-    end.innerHTML = 'Mostrando ' + r + ' de ' + n + ' · <button type="button" class="link-btn" data-more-cards>Mostrar mais</button>';
+  function pageCount() {
+    return Math.max(1, Math.ceil(state.view.length / PER_PAGE));
   }
 
-  function appendCards() {
-    var v = state.view, from = state.rendered, to = Math.min(v.length, from + PAGE);
-    if (from >= to) return;
+  // Lista das páginas a mostrar no rodapé, com reticências quando há muitas
+  function pageItems(cur, total) {
+    if (total <= 7) {
+      var all = [];
+      for (var i = 1; i <= total; i++) all.push(i);
+      return all;
+    }
+    var set = {};
+    [1, 2, total - 1, total, cur - 1, cur, cur + 1].forEach(function (p) {
+      if (p >= 1 && p <= total) set[p] = true;
+    });
+    var pages = Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
+    var out = [];
+    for (var k = 0; k < pages.length; k++) {
+      if (k && pages[k] - pages[k - 1] > 1) out.push('…');
+      out.push(pages[k]);
+    }
+    return out;
+  }
+
+  function renderPager() {
+    var end = $('listEnd'), total = pageCount(), cur = state.page, n = state.view.length;
+    if (n <= PER_PAGE) { end.classList.add('hidden'); end.innerHTML = ''; return; }
+    end.classList.remove('hidden');
+
+    var from = (cur - 1) * PER_PAGE + 1, to = Math.min(n, cur * PER_PAGE);
+    var html = '<nav class="pager" role="navigation" aria-label="Paginação das consultas">';
+    html += '<button type="button" class="pager__btn" data-page="' + (cur - 1) + '"' + (cur <= 1 ? ' disabled' : '') + ' aria-label="Página anterior">‹</button>';
+    pageItems(cur, total).forEach(function (p) {
+      if (p === '…') { html += '<span class="pager__gap" aria-hidden="true">…</span>'; return; }
+      var active = p === cur;
+      html += '<button type="button" class="pager__btn pager__num' + (active ? ' is-active' : '') + '" data-page="' + p + '"' +
+        (active ? ' aria-current="page"' : '') + ' aria-label="Página ' + p + '">' + p + '</button>';
+    });
+    html += '<button type="button" class="pager__btn" data-page="' + (cur + 1) + '"' + (cur >= total ? ' disabled' : '') + ' aria-label="Próxima página">›</button>';
+    html += '</nav>';
+    html += '<div class="pager__info">Página ' + cur + ' de ' + total + ' · ' + from + '–' + to + ' de ' + n + '</div>';
+    end.innerHTML = html;
+  }
+
+  function renderPage() {
+    var v = state.view, total = pageCount();
+    if (state.page > total) state.page = total;
+    if (state.page < 1) state.page = 1;
+    var from = (state.page - 1) * PER_PAGE, to = Math.min(v.length, from + PER_PAGE);
     var html = '';
     for (var i = from; i < to; i++) html += cardHtml(v[i]);
-    $('queryList').insertAdjacentHTML('beforeend', html);
-    state.rendered = to;
-    updateListEnd();
+    $('queryList').innerHTML = html;
+    renderPager();
+  }
+
+  // Troca de página: redesenha e leva o foco de volta ao topo da lista
+  function goToPage(p) {
+    var total = pageCount();
+    p = Math.min(Math.max(1, p), total);
+    if (p === state.page) return;
+    state.page = p;
+    renderPage();
+    updateSelectAll();
+    var top = $('queryList');
+    if (top) {
+      var y = top.getBoundingClientRect().top + window.scrollY - 90;
+      window.scrollTo({ top: Math.max(0, y), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
   }
 
   function renderList() {
     state.sq = parseSearch(state.search);
     state.view = visibleQueries();
-    $('queryList').innerHTML = '';
-    state.rendered = 0;
-    appendCards();
+    state.page = 1;
+    renderPage();
     updateResultsHead();
 
     var empty = $('emptyState'), none = !state.view.length;
@@ -890,13 +942,12 @@
     on('bulkZip', 'click', function () { downloadZip(selectedIds().map(findQuery).filter(Boolean), 'consultas_selecionadas.zip'); });
     on('bulkClear', 'click', function () { QH.clearSelection(); });
 
-    // Carregamento progressivo da lista
-    on('listEnd', 'click', function (e) { if (e.target.closest('[data-more-cards]')) appendCards(); });
-    if ('IntersectionObserver' in window && $('listEnd')) {
-      new IntersectionObserver(function (entries) {
-        if (entries[0].isIntersecting && state.rendered < state.view.length) appendCards();
-      }, { rootMargin: '700px 0px' }).observe($('listEnd'));
-    }
+    // Paginação da lista
+    on('listEnd', 'click', function (e) {
+      var btn = e.target.closest('[data-page]');
+      if (!btn || btn.disabled) return;
+      goToPage(Number(btn.getAttribute('data-page')));
+    });
 
     // Painel de detalhes
     on('drawerClose', 'click', closeDrawer);
