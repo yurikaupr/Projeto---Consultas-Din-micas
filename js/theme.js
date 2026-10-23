@@ -74,17 +74,12 @@
       }
     });
     if (!bad.length) return;
-    var bar = document.createElement('div');
-    bar.setAttribute('role', 'alert');
-    bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;padding:12px 16px;background:#b42318;color:#fff;font:600 13px/1.5 system-ui,sans-serif;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';
-    bar.textContent = 'Parte do site está desatualizada neste navegador: ' + bad.join(', ') + '. Aperte Ctrl+F5. Se continuar assim, confira se esses arquivos estão nas pastas certas no GitHub (css/ e js/). Versão esperada: ' + BUILD + '.';
-    var close = document.createElement('button');
-    close.textContent = '×';
-    close.setAttribute('aria-label', 'Fechar aviso');
-    close.style.cssText = 'margin-left:12px;border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer';
-    close.onclick = function () { bar.remove(); };
-    bar.appendChild(close);
-    document.body.appendChild(bar);
+    // Por segurança não exibimos nada ao visitante: um aviso visível revelaria
+    // versões, caminhos de arquivo e a estrutura do repositório a qualquer pessoa.
+    // O diagnóstico fica só no console, para quem estiver desenvolvendo.
+    if (window.console && console.warn) {
+      console.warn('[QueryHub] Versão divergente detectada neste navegador. Atualize a página (Ctrl+F5). Detalhes: ' + bad.join(', ') + '. Versão esperada: ' + BUILD + '.');
+    }
   }
   window.addEventListener('load', function () { setTimeout(checkBuild, 300); });
 
