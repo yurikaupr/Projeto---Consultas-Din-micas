@@ -5,13 +5,15 @@
 (function () {
   'use strict';
 
-  if (window.QHBuild) window.QHBuild.report('app', '3.4.0');
+  if (window.QHBuild) window.QHBuild.report('app', '3.5.0');
 
   /* ---------- Configurações ---------- */
   var ADMIN = document.body.getAttribute('data-mode') === 'admin';
   var DATA_URL = 'data/queries.json';
   var FAV_KEY = 'queryhub:favorites:v1';
   var REQUEST_EMAIL = 'yuri.klug@magazord.com.br';   // quem recebe os pedidos de ajuste
+  var ZENDESK_SUBDOMAIN = 'atendimentomagazord';     // subdomínio do Zendesk (…​.zendesk.com)
+  var ZENDESK_NEW_TICKET = 'https://' + ZENDESK_SUBDOMAIN + '.zendesk.com/agent/tickets/new';
   var MAILTO_LIMIT = 1900;                            // tamanho máximo do link de e-mail (alguns programas cortam acima disso)
   var MAX_CATEGORIES = 3;
   var MAX_HIGHLIGHTS = 4;
@@ -846,6 +848,35 @@
     toast(f.download ? 'E-mail aberto. Anexe o JSON que foi baixado.' : 'E-mail aberto.');
   }
 
+  /* ---------- Pedido de ajuste via Zendesk ---------- */
+  /* A tela do agente do Zendesk não aceita preencher assunto/descrição pela URL,
+     então copiamos o texto completo e abrimos um ticket novo para colar (Ctrl+V). */
+  function zendeskText(q, f) {
+    var subject = 'Pedido de ajuste – Consulta ' + (q.num ? formatId(q.num) + ' – ' : '') + q.name.slice(0, 80);
+    var body = mailLines(q, f, { cols: true, json: f.inline ? JSON.stringify(q.raw_json) : '', maxText: 100000 });
+    return { subject: subject, text: 'Assunto: ' + subject + '\r\n\r\n' + body };
+  }
+
+  function openZendesk() {
+    var q = state.request;
+    if (!q) return;
+    var f = reqFields();
+    if (f.text.length < 10) { $('reqError').textContent = 'Descreva o ajuste com pelo menos 10 caracteres.'; $('reqText').focus(); return; }
+    $('reqError').textContent = '';
+    var data = zendeskText(q, f);
+    copyText(data.text).catch(function () { /* o toast abaixo avisa; segue abrindo o Zendesk */ });
+    if (f.download) downloadQuery(q.id);
+    var a = document.createElement('a');
+    a.href = ZENDESK_NEW_TICKET;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    closeModal($('requestModal'));
+    toast('Texto copiado. Cole com Ctrl+V na descrição do ticket.');
+  }
+
   /* ---------- Eventos ---------- */
   function setSearch(value) {
     state.search = value;
@@ -979,6 +1010,7 @@
     on('reqText', 'input', function (e) { $('reqCount').textContent = e.target.value.length + ' / 1000'; $('reqError').textContent = ''; });
     on('reqSend', 'click', function () { sendRequest(false); });
     on('reqCopy', 'click', function () { sendRequest(true); });
+    on('reqZendesk', 'click', openZendesk);
 
     // Pop-ups: fechar com ×, Cancelar, Esc ou clique fora (com animação)
     document.querySelectorAll('[data-close]').forEach(function (btn) {
