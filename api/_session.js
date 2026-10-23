@@ -8,7 +8,7 @@ export { listFromEnv };
 export const COOKIE_NAME = '__Host-qh_session';
 
 function sessionHours() {
-  const hours = Number(process.env.SESSION_HOURS) || 8;
+  const hours = Number(process.env.SESSION_HOURS) || 1;
   return Math.min(Math.max(hours, 1), 24);
 }
 
